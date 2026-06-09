@@ -1368,20 +1368,20 @@ function wireWorkspaceLayout() {
     workspaceSplitterEl.setPointerCapture(ev.pointerId);
     workspaceSplitterEl.classList.add("is-dragging");
     const stacked = isStackedWorkspace();
-    const startX = ev.clientX;
     const startY = ev.clientY;
-    const startW = commentsPaneEl.getBoundingClientRect().width;
     const startH = commentsPaneEl.getBoundingClientRect().height;
 
     const onMove = (e) => {
+      const rect = workspaceEl.getBoundingClientRect();
       if (stacked) {
         const nextH = Math.round(
-          Math.min(COMMENTS_H_MAX, Math.max(COMMENTS_H_MIN, startH + (startY - e.clientY))),
+          Math.min(COMMENTS_H_MAX, Math.max(COMMENTS_H_MIN, startH + (e.clientY - startY))),
         );
         document.documentElement.style.setProperty("--comments-pane-h", `${nextH}px`);
       } else {
+        // Comments sit on the right: width = distance from cursor to workspace edge.
         const nextW = Math.round(
-          Math.min(COMMENTS_W_MAX, Math.max(COMMENTS_W_MIN, startW + (e.clientX - startX))),
+          Math.min(COMMENTS_W_MAX, Math.max(COMMENTS_W_MIN, rect.right - e.clientX)),
         );
         document.documentElement.style.setProperty("--comments-pane-w", `${nextW}px`);
       }
@@ -1415,11 +1415,11 @@ function wireWorkspaceLayout() {
     const step = ev.shiftKey ? 40 : 16;
     let delta = 0;
     if (stacked) {
-      if (ev.key === "ArrowUp") delta = step;
-      if (ev.key === "ArrowDown") delta = -step;
+      if (ev.key === "ArrowUp") delta = -step;
+      if (ev.key === "ArrowDown") delta = step;
     } else {
-      if (ev.key === "ArrowLeft") delta = -step;
-      if (ev.key === "ArrowRight") delta = step;
+      if (ev.key === "ArrowLeft") delta = step;
+      if (ev.key === "ArrowRight") delta = -step;
     }
     if (!delta) return;
     ev.preventDefault();

@@ -11,7 +11,12 @@ $ExePath = Join-Path $InstallDir "peerfold.exe"
 
 Write-Host "Downloading PeerFold for Windows..."
 New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
-Invoke-WebRequest -Uri "$BaseUrl/peerfold-win.exe" -OutFile $ExePath -UseBasicParsing
+$ProgressPreference = "Continue"
+try {
+    Invoke-WebRequest -Uri "$BaseUrl/peerfold-win.exe" -OutFile $ExePath
+} finally {
+    $ProgressPreference = "SilentlyContinue"
+}
 
 $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
 if ($userPath -notlike "*$InstallDir*") {

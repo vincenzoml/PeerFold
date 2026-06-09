@@ -24,6 +24,17 @@ _peerfold_cleanup() {
   _PEERFOLD_TMP=""
 }
 
+download_file() {
+  local dest="$1"
+  local url="$2"
+  if [[ -t 2 ]]; then
+    curl -fL --progress-bar -o "${dest}" "${url}"
+    echo ""
+  else
+    curl -fsSL -o "${dest}" "${url}"
+  fi
+}
+
 OS="$(uname -s)"
 
 install_macos() {
@@ -39,7 +50,7 @@ install_macos() {
   trap _peerfold_cleanup EXIT
 
   echo "Downloading PeerFold for macOS…"
-  curl -fsSL -o "${_PEERFOLD_TMP}/peerfold.dmg" "${BASE_URL}/peerfold-macos.dmg"
+  download_file "${_PEERFOLD_TMP}/peerfold.dmg" "${BASE_URL}/peerfold-macos.dmg"
   hdiutil attach -nobrowse -quiet -mountpoint "${_PEERFOLD_MOUNT}" "${_PEERFOLD_TMP}/peerfold.dmg"
 
   if [[ ! -d "${_PEERFOLD_MOUNT}/PeerFold.app" ]]; then
@@ -72,7 +83,7 @@ install_linux() {
   dest="${bin_dir}/peerfold"
 
   echo "Downloading PeerFold for Linux…"
-  curl -fsSL -o "${dest}" "${BASE_URL}/peerfold-linux"
+  download_file "${dest}" "${BASE_URL}/peerfold-linux"
   chmod +x "${dest}"
 
   echo "Installed peerfold to ${dest}"

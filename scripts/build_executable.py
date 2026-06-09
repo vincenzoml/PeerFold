@@ -10,18 +10,19 @@ import sys
 from importlib.resources import files
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
+BUILD_ROOT = ROOT / "build" / "pyinstaller"
+DIST_BUILD = ROOT / "dist" / "build"
 
-def artifact_path(dist: Path, name: str) -> Path:
+
+def artifact_in_appdir(app_dir: Path, name: str) -> Path:
     base = name[:-4] if name.lower().endswith(".exe") else name
-    if sys.platform == "darwin":
-        return dist / base / base
     if sys.platform == "win32":
-        return dist / f"{base}.exe"
-    return dist / base
+        return app_dir / f"{base}.exe"
+    return app_dir / base
 
 
 def pyinstaller_extras() -> list[str]:
-    # Standalone builds use the system browser (no pywebview) for fast, reliable startup.
     return [
         "--hidden-import",
         "fitz",
@@ -30,12 +31,28 @@ def pyinstaller_extras() -> list[str]:
     ]
 
 
-def package_macos(dist: Path, name: str) -> Path:
-    archive = dist / f"{name}.zip"
-    if archive.exists():
-        archive.unlink()
-    shutil.make_archive(str(archive.with_suffix("")), "zip", dist, name)
-    return archive
+def use_onedir() -> bool:
+    # macOS/Linux: onedir + self-extracting wrapper. Windows: native onefile .exe.
+    return sys.platform != "win32"
+
+
+def package_outputs(app_dir: Path, name: str) -> list[Path]:
+    from package_release import make_dmg, make_sfx, read_version
+
+    version = read_version(ROOT)
+    dist = ROOT / "dist"
+    outputs: list[Path] = []
+
+    sfx = dist / name
+    make_sfx(app_dir, sfx, name, version)
+    outputs.append(sfx)
+
+    if sys.platform == "darwin":
+        dmg = dist / f"{name}.dmg"
+        make_dmg(app_dir, dmg)
+        outputs.append(dmg)
+
+    return outputs
 
 
 def main() -> None:
@@ -43,50 +60,62 @@ def main() -> None:
     ap.add_argument(
         "--name",
         default="peerfold",
-        help="Output executable base name (e.g. peerfold-macos; .exe added on Windows)",
+        help="Output executable base name (e.g. peerfold-macos)",
     )
     args = ap.parse_args()
     base = args.name[:-4] if args.name.lower().endswith(".exe") else args.name
 
-    root = Path(__file__).resolve().parents[1]
     static = Path(str(files("peerfold") / "static"))
     if not static.is_dir():
-        static = root / "src" / "peerfold" / "static"
+        static = ROOT / "src" / "peerfold" / "static"
     if not static.is_dir():
         raise SystemExit("Cannot locate peerfold/static — install the package first")
 
     sep = ";" if sys.platform == "win32" else ":"
     add_data = f"{static}{sep}peerfold/static"
-    dist = root / "dist"
+
+    dist = ROOT / "dist"
     if dist.exists():
         shutil.rmtree(dist)
+    DIST_BUILD.mkdir(parents=True, exist_ok=True)
+    BUILD_ROOT.mkdir(parents=True, exist_ok=True)
 
-    # macOS onefile hangs in the PyInstaller bootloader; use onedir + zip.
-    bundle = "--onedir" if sys.platform == "darwin" else "--onefile"
+    bundle_flag = "--onedir" if use_onedir() else "--onefile"
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
-        bundle,
+        bundle_flag,
         "--name",
         base,
+        "--distpath",
+        str(DIST_BUILD),
+        "--workpath",
+        str(BUILD_ROOT),
+        "--specpath",
+        str(BUILD_ROOT),
         "--add-data",
         add_data,
         *pyinstaller_extras(),
-        str(root / "src" / "peerfold" / "cli.py"),
+        str(ROOT / "src" / "peerfold" / "cli.py"),
     ]
-    subprocess.run(cmd, cwd=root, check=True)
+    subprocess.run(cmd, cwd=ROOT, check=True)
 
-    out = artifact_path(dist, base)
-    if not out.is_file():
-        raise SystemExit(f"Expected build output missing: {out}")
+    app_dir = DIST_BUILD / base
+    binary = artifact_in_appdir(app_dir, base)
+    if not binary.is_file():
+        raise SystemExit(f"Expected build output missing: {binary}")
 
-    if sys.platform == "darwin":
-        archive = package_macos(dist, base)
-        print(f"Built {out}")
-        print(f"Packaged {archive}")
+    if use_onedir():
+        sys.path.insert(0, str(ROOT / "scripts"))
+        packaged = package_outputs(app_dir, base)
+        print(f"Built {binary}")
+        for path in packaged:
+            print(f"Packaged {path}")
     else:
-        print(f"Built {out}")
+        final = dist / f"{base}.exe"
+        shutil.move(str(binary), str(final))
+        print(f"Built {final}")
 
 
 if __name__ == "__main__":

@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=61", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "papertrail-review"
+version = "0.1.0"
+description = "Local PDF review with browser UI and Acrobat-compatible highlights"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Vincenzo Malagola" }]
+keywords = ["pdf", "review", "annotation", "highlights", "academic"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Web Environment",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Text Editors :: Documentation",
+]
+dependencies = [
+    "pymupdf>=1.24.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "build>=1.2",
+    "playwright>=1.44",
+    "pyinstaller>=6.6",
+    "pytest>=8.0",
+    "twine>=5.0",
+]
+
+[project.scripts]
+papertrail = "papertrail.cli:main"
+
+[project.urls]
+Homepage = "https://vincenzoml.github.io/PaperTrail/"
+Repository = "https://github.com/vincenzoml/PaperTrail"
+Issues = "https://github.com/vincenzoml/PaperTrail/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

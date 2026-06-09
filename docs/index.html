@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="PaperTrail — review PDFs in your browser with standard highlight annotations.">
+  <title>PaperTrail</title>
+  <style>
+    :root {
+      --bg: #0c0c0e;
+      --fg: #ececef;
+      --muted: #8b8b96;
+      --accent: #f5d547;
+      --card: #16161a;
+      --border: #2a2a32;
+      --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      --sans: "Inter", system-ui, -apple-system, sans-serif;
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #fafafa;
+        --fg: #111114;
+        --muted: #6b6b76;
+        --card: #fff;
+        --border: #e4e4ea;
+      }
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: var(--sans);
+      background: var(--bg);
+      color: var(--fg);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    .wrap {
+      max-width: 920px;
+      margin: 0 auto;
+      padding: 4rem 1.5rem 6rem;
+    }
+    header { margin-bottom: 3rem; }
+    .mark {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      background: var(--accent);
+      margin-right: 0.6rem;
+      vertical-align: middle;
+    }
+    h1 {
+      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-weight: 650;
+      letter-spacing: -0.03em;
+      line-height: 1.15;
+    }
+    .tagline {
+      margin-top: 0.75rem;
+      font-size: 1.125rem;
+      color: var(--muted);
+      max-width: 36em;
+    }
+    .shot {
+      margin: 2.5rem 0;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--card);
+      box-shadow: 0 24px 80px rgba(0,0,0,.35);
+    }
+    .shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+    }
+    .install {
+      display: grid;
+      gap: 1rem;
+      margin: 2.5rem 0;
+    }
+    .cmd {
+      font-family: var(--mono);
+      font-size: 0.9rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      overflow-x: auto;
+    }
+    .cmd span { color: var(--muted); user-select: none; }
+    h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      color: var(--muted);
+      margin: 2.5rem 0 1rem;
+      font-weight: 600;
+    }
+    ul.features {
+      list-style: none;
+      display: grid;
+      gap: 0.65rem;
+    }
+    ul.features li::before {
+      content: "—";
+      color: var(--accent);
+      margin-right: 0.5rem;
+    }
+    .links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+      margin-top: 3rem;
+      padding-top: 2rem;
+      border-top: 1px solid var(--border);
+    }
+    .links a {
+      color: var(--fg);
+      text-decoration: none;
+      font-size: 0.95rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 2px;
+    }
+    .links a:hover { border-color: var(--accent); }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1><span class="mark" aria-hidden="true"></span>PaperTrail</h1>
+      <p class="tagline">Review PDFs in your browser. Highlights are real PDF annotations — readable in Acrobat, Preview, and every reader.</p>
+    </header>
+
+    <figure class="shot">
+      <img src="screenshot.png" width="1440" height="900" alt="PaperTrail reviewing a PDF with highlights and comments">
+    </figure>
+
+    <div class="install">
+      <div class="cmd"><span>$ </span>pipx install papertrail-review</div>
+      <div class="cmd"><span>$ </span>papertrail manuscript.pdf --reviewer VC</div>
+    </div>
+
+    <h2>Features</h2>
+    <ul class="features">
+      <li>Span-accurate highlights with threaded comments</li>
+      <li>Citation links open DOIs and URLs directly</li>
+      <li>Autosave, multi-tab sync, reviewer handoff</li>
+      <li>Saved as <code>paper_VC-2026-06-09.pdf</code> beside the original</li>
+    </ul>
+
+    <h2>Install</h2>
+    <div class="install">
+      <div class="cmd"><span>$ </span>pip install papertrail-review</div>
+      <div class="cmd">or download a standalone binary from Releases</div>
+    </div>
+
+    <nav class="links">
+      <a href="https://github.com/vincenzoml/PaperTrail">GitHub</a>
+      <a href="https://github.com/vincenzoml/PaperTrail/releases">Releases</a>
+      <a href="https://pypi.org/project/papertrail-review/">PyPI</a>
+    </nav>
+  </div>
+</body>
+</html>

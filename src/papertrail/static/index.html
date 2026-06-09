@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>PaperTrail</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div class="brand-text">
+        <strong id="doc-name">PaperTrail</strong>
+        <span id="doc-meta" class="muted"></span>
+      </div>
+    </div>
+    <div class="topbar-actions">
+      <label class="reviewer-field">
+        <span>Reviewer</span>
+        <input id="reviewer" type="text" maxlength="16" spellcheck="false" autocomplete="off"
+               list="reviewer-list" placeholder="VC" aria-label="Reviewer short name">
+        <datalist id="reviewer-list"></datalist>
+      </label>
+      <label class="autosave-toggle is-on" id="autosave-wrap" title="Write every change to disk immediately">
+        <input id="autosave" type="checkbox" checked hidden>
+        <span class="autosave-track" aria-hidden="true"><span class="autosave-thumb"></span></span>
+        <span class="autosave-copy">
+          <span class="autosave-label">Autosave</span>
+          <span class="autosave-state" id="autosave-state">On</span>
+        </span>
+      </label>
+      <button id="save-btn" class="btn primary" type="button" title="Save now (⌘S)">
+        Save
+      </button>
+    </div>
+  </header>
+
+  <div class="toolbar" role="toolbar" aria-label="Annotation tools">
+    <span class="toolbar-label">Highlight</span>
+    <div id="palette" class="palette" role="radiogroup" aria-label="Highlight colour"></div>
+    <div class="zoom-controls" aria-label="Zoom">
+      <button id="zoom-out" type="button" class="btn zoom-btn" title="Zoom out">−</button>
+      <span id="zoom-label" class="zoom-label">100%</span>
+      <button id="zoom-in" type="button" class="btn zoom-btn" title="Zoom in">+</button>
+      <button id="zoom-reset" type="button" class="btn zoom-btn" title="Reset zoom">⟲</button>
+    </div>
+    <div class="history-controls" aria-label="Undo and redo">
+      <button id="undo-btn" type="button" class="btn zoom-btn" title="Undo (⌘Z)" disabled aria-label="Undo">↩</button>
+      <button id="redo-btn" type="button" class="btn zoom-btn" title="Redo (⌘⇧Z)" disabled aria-label="Redo">↪</button>
+    </div>
+    <span class="toolbar-hint muted">Select text · ⌘A comments · ⌘Z undo · pinch or ⌘ scroll to zoom</span>
+  </div>
+
+  <div id="workspace" class="workspace">
+    <main id="viewer" class="viewer" tabindex="0">
+      <div id="pages-viewport" class="pages-viewport">
+        <div id="pages" class="pages"></div>
+      </div>
+    </main>
+    <div id="workspace-splitter" class="workspace-splitter" role="separator"
+         aria-orientation="vertical" aria-controls="comments-pane" tabindex="0"
+         title="Drag to resize comments"></div>
+    <aside id="comments-pane" class="comments-pane" aria-label="Comments">
+      <header class="comments-pane-head">
+        <div class="comments-pane-title">
+          <strong>Comments</strong>
+          <span id="comments-count" class="muted">0</span>
+          <button id="comments-collapse-btn" type="button" class="btn-pane-toggle"
+                  title="Collapse comments" aria-expanded="true" aria-controls="comments-list">›</button>
+        </div>
+        <div id="comments-selection-bar" class="comments-selection-bar" hidden>
+          <span id="comments-selection-count" class="comments-selection-count">0 selected</span>
+          <button id="comments-delete-selected" type="button" class="btn btn-danger-sm">Delete</button>
+          <button id="comments-clear-selection" type="button" class="btn btn-ghost-sm">Clear</button>
+        </div>
+      </header>
+      <div id="comments-list" class="comments-list"></div>
+    </aside>
+  </div>
+
+  <div id="toast" class="toast" hidden></div>
+  <menu id="ctx-menu" class="ctx-menu" hidden></menu>
+
+  <div id="comment-editor" class="comment-editor" hidden>
+    <div class="comment-editor-backdrop" aria-hidden="true"></div>
+    <div class="comment-editor-panel" role="dialog" aria-modal="true" aria-labelledby="comment-editor-title">
+      <div class="comment-editor-accent" aria-hidden="true"></div>
+      <header class="comment-editor-head">
+        <div id="comment-editor-title" class="comment-editor-title"></div>
+        <div id="comment-editor-meta" class="comment-editor-meta"></div>
+      </header>
+      <blockquote id="comment-editor-quote" class="comment-editor-quote"></blockquote>
+      <div class="comment-editor-body">
+        <textarea id="comment-editor-ta" rows="7" spellcheck="true"></textarea>
+      </div>
+      <footer id="comment-editor-foot" class="comment-editor-foot"></footer>
+    </div>
+  </div>
+
+  <script src="/static/app.js" type="module"></script>
+</body>
+</html>

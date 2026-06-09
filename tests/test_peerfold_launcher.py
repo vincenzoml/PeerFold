@@ -1,4 +1,5 @@
 import importlib.util
+import re
 from pathlib import Path
 
 
@@ -31,3 +32,9 @@ def test_write_pinned_version(tmp_path):
     script.write_text('PEERFOLD_VERSION = "0.1.14"\n', encoding="utf-8")
     mod.write_pinned_version(script, "0.1.15")
     assert 'PEERFOLD_VERSION = "0.1.15"' in script.read_text(encoding="utf-8")
+
+
+def test_latest_pypi_version():
+    mod = load_launcher()
+    latest = mod.latest_pypi_version()
+    assert re.fullmatch(r"\d+\.\d+\.\d+", latest)

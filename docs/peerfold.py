@@ -12,15 +12,19 @@ so every co-author gets the same PeerFold. Run --update when you want a newer re
 
 from __future__ import annotations
 
+import json
 import re
 import subprocess
 import sys
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parents[1]
 VENV = ROOT / ".venv-peerfold"
 PACKAGE = "peerfold-review"
 PEERFOLD_VERSION = "0.1.16"
+PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
 def venv_paths() -> tuple[Path, Path]:
@@ -50,6 +54,14 @@ def installed_version(py: Path) -> str | None:
     return None
 
 
+def latest_pypi_version() -> str:
+    try:
+        with urlopen(PYPI_JSON, timeout=15) as resp:
+            return json.load(resp)["info"]["version"]
+    except URLError as exc:
+        raise SystemExit(f"Could not reach PyPI for {PACKAGE}: {exc}") from exc
+
+
 def install_pinned(py: Path) -> None:
     subprocess.run([str(py), "-m", "pip", "install", "-U", "pip"], check=True)
     subprocess.run(
@@ -59,14 +71,18 @@ def install_pinned(py: Path) -> None:
 
 
 def upgrade_to_latest(py: Path) -> str:
+    subprocess.run([str(py), "-m", "pip", "install", "-U", "pip"], check=True)
+    latest = latest_pypi_version()
     subprocess.run(
-        [str(py), "-m", "pip", "install", "-U", "pip", PACKAGE],
+        [str(py), "-m", "pip", "install", "--upgrade", f"{PACKAGE}=={latest}"],
         check=True,
     )
-    version = installed_version(py)
-    if not version:
-        raise SystemExit(f"Could not detect {PACKAGE} version after upgrade")
-    return version
+    installed = installed_version(py)
+    if installed != latest:
+        raise SystemExit(
+            f"Installed {PACKAGE} {installed or '?'}, expected PyPI latest {latest}"
+        )
+    return latest
 
 
 def write_pinned_version(script: Path, version: str) -> None:
@@ -98,15 +114,15 @@ def main() -> None:
     script = Path(__file__).resolve()
 
     if do_update:
-        new_version = upgrade_to_latest(py)
-        if new_version != PEERFOLD_VERSION:
-            write_pinned_version(script, new_version)
+        latest = upgrade_to_latest(py)
+        if latest != PEERFOLD_VERSION:
+            write_pinned_version(script, latest)
             print(
-                f"Updated {PACKAGE} to {new_version} — commit scripts/peerfold.py "
-                f"so co-authors stay in sync."
+                f"Updated {PACKAGE} {PEERFOLD_VERSION} → {latest} — "
+                "commit scripts/peerfold.py so co-authors stay in sync."
             )
         else:
-            print(f"{PACKAGE} already at pinned version {PEERFOLD_VERSION}.")
+            print(f"{PACKAGE} {latest} — already the latest on PyPI (pin unchanged).")
         if not args:
             raise SystemExit(0)
 

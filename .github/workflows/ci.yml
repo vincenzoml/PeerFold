@@ -63,6 +63,17 @@ jobs:
           base="${base%.exe}"
           python scripts/build_executable.py --name "$base"
 
+      - name: Verify executable
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            dist/peerfold-win.exe --version
+          else
+            base="${{ matrix.asset }}"
+            base="${base%.exe}"
+            "dist/$base" --version
+          fi
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:

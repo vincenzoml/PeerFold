@@ -1,6 +1,6 @@
 # PeerFold
 
-Review PDFs in your browser. Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
+Review PDFs in a native window (or your browser with `--browser`). Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
 
 ```bash
 pipx install peerfold-review
@@ -27,7 +27,8 @@ Standalone binaries: `chmod +x` on macOS/Linux, then `./peerfold-macos paper.pdf
 peerfold paper.pdf                  # open browser UI
 peerfold paper.pdf -r VC            # reviewer short name (filename + metadata)
 peerfold paper.pdf --port 8765      # fixed port
-peerfold paper.pdf --no-browser     # server only
+peerfold paper.pdf --browser          # system browser instead of native window
+peerfold paper.pdf --no-browser       # server only
 ```
 
 Environment: `PEERFOLD_REVIEWER` sets the default reviewer name.

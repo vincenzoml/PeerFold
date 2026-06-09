@@ -51,12 +51,21 @@ jobs:
         shell: bash
         run: |
           python -m pip install --upgrade pip
-          pip install . pyinstaller
+          pip install ".[dev]" pyinstaller
           python scripts/build_executable.py --name ${{ matrix.name }}
+
+      - name: Verify executable
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            dist/peerfold-win.exe --version
+          else
+            "dist/${{ matrix.name }}" --version
+          fi
 
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             dist/${{ matrix.name }}*
-          generate_release_notes: true
+          generate_release_notes: ${{ matrix.os == 'ubuntu-latest' }}

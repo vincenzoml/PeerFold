@@ -18,6 +18,47 @@ def artifact_path(dist: Path, name: str) -> Path:
     return dist / base
 
 
+def pyinstaller_extras() -> list[str]:
+    extras = [
+        "--hidden-import",
+        "fitz",
+        "--collect-submodules",
+        "fitz",
+        "--hidden-import",
+        "webview",
+        "--collect-all",
+        "webview",
+        "--collect-all",
+        "clr_loader",
+        "--copy-metadata",
+        "pywebview",
+    ]
+    if sys.platform == "win32":
+        extras.extend(
+            [
+                "--hidden-import",
+                "webview.platforms.winforms",
+                "--hidden-import",
+                "webview.platforms.edgechromium",
+            ]
+        )
+    elif sys.platform == "darwin":
+        extras.extend(
+            [
+                "--hidden-import",
+                "webview.platforms.cocoa",
+            ]
+        )
+    else:
+        extras.extend(
+            [
+                "--hidden-import",
+                "webview.platforms.gtk",
+            ]
+        )
+    return extras
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument(
@@ -26,6 +67,7 @@ def main() -> None:
         help="Output executable base name (e.g. peerfold-macos; .exe added on Windows)",
     )
     args = ap.parse_args()
+    base = args.name[:-4] if args.name.lower().endswith(".exe") else args.name
 
     root = Path(__file__).resolve().parents[1]
     static = Path(str(files("peerfold") / "static"))
@@ -46,17 +88,12 @@ def main() -> None:
         "PyInstaller",
         "--onefile",
         "--name",
-        args.name,
+        base,
         "--add-data",
         add_data,
-        "--hidden-import",
-        "fitz",
-        "--collect-submodules",
-        "fitz",
+        *pyinstaller_extras(),
         str(root / "src" / "peerfold" / "cli.py"),
     ]
-    base = args.name[:-4] if args.name.lower().endswith(".exe") else args.name
-    cmd[cmd.index("--name") + 1] = base
     subprocess.run(cmd, cwd=root, check=True)
     out = artifact_path(dist, base)
     if not out.is_file():

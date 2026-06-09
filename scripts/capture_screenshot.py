@@ -23,7 +23,7 @@ def main() -> None:
     from peerfold.core import run_server  # noqa: PLC0415
 
     def serve() -> None:
-        run_server(DEMO, reviewer="RB", port=PORT, open_browser=False)
+        run_server(DEMO, reviewer="RB", port=PORT, ui="none")
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()

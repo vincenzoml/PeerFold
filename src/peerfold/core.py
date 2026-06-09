@@ -1073,9 +1073,10 @@ def run_server(
     *,
     reviewer: str = "rev",
     port: int = 0,
-    open_browser: bool = True,
+    ui: str = "webview",
 ) -> None:
-    import webbrowser
+    """Start PeerFold. ui: webview (default), browser, or none."""
+    from peerfold.ui import open_webview_or_browser
 
     fitz = import_fitz()
     pdf = pdf.resolve()
@@ -1086,6 +1087,7 @@ def run_server(
     session = PdfSession(pdf, reviewer, fitz)
     chosen = pick_port(port)
     url = f"http://127.0.0.1:{chosen}/"
+    title = f"PeerFold · {pdf.name}"
 
     handler = type("BoundReviewHandler", (ReviewHandler,), {})
     handler.session = session
@@ -1096,9 +1098,36 @@ def run_server(
     print(f"Save copy: {session.save_path}")
     print(f"Open: {url}")
 
-    if open_browser:
-        webbrowser.open(url)
+    if ui == "none":
+        try:
+            server.serve_forever()
+        except KeyboardInterrupt:
+            print("\nStopping…")
+        finally:
+            server.server_close()
+            session.close()
+        return
 
+    if ui == "webview":
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        time.sleep(0.2)
+        try:
+            mode = open_webview_or_browser(url, title)
+            if mode == "browser":
+                try:
+                    thread.join()
+                except KeyboardInterrupt:
+                    print("\nStopping…")
+        finally:
+            server.shutdown()
+            server.server_close()
+            session.close()
+        return
+
+    import webbrowser
+
+    webbrowser.open(url)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

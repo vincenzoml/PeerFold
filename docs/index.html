@@ -97,7 +97,36 @@
       margin: 2.5rem 0 1rem;
       font-weight: 600;
     }
-    ul.features, ul.install-list {
+    h3 {
+      font-size: 1.05rem;
+      font-weight: 600;
+      margin: 1.75rem 0 0.5rem;
+    }
+    h3:first-of-type { margin-top: 0; }
+    .hint {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0.5rem 0 0.75rem;
+    }
+    ol.steps {
+      margin: 0.75rem 0 0;
+      padding-left: 1.25rem;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    ol.steps li + li { margin-top: 0.35rem; }
+    ol.steps strong { color: var(--fg); font-weight: 600; }
+    .platform-block {
+      margin-bottom: 2rem;
+      padding-bottom: 2rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .platform-block:last-child {
+      margin-bottom: 0;
+      padding-bottom: 0;
+      border-bottom: 0;
+    }
+    ul.features {
       list-style: none;
       display: grid;
       gap: 0.65rem;
@@ -107,25 +136,7 @@
       color: var(--accent);
       margin-right: 0.5rem;
     }
-    .install-list li {
-      padding: 0.85rem 1rem;
-      background: var(--card);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-    }
-    .install-list strong {
-      display: block;
-      margin-bottom: 0.25rem;
-    }
-    .install-list p {
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-    .install-list code {
-      font-family: var(--mono);
-      font-size: 0.85em;
-    }
-  .links {
+    .links {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
@@ -141,6 +152,11 @@
       padding-bottom: 2px;
     }
     .links a:hover { border-color: var(--accent); }
+    .platform-block a {
+      color: var(--fg);
+      text-decoration: underline;
+      text-underline-offset: 2px;
+    }
   </style>
 </head>
 <body>
@@ -154,43 +170,33 @@
       <img src="screenshot.png" width="1440" height="900" alt="PeerFold with highlighted text and reviewer comments on a fictional paper">
     </figure>
 
-    <h2>Quick start</h2>
-    <div class="install">
-      <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
-      <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
-      <p style="color:var(--muted);font-size:0.95rem;margin-top:-0.25rem">Opens an embedded window (pip/pipx). Standalone binaries use your system browser.</p>
+    <h2>Install</h2>
+
+    <div class="platform-block">
+      <h3>macOS</h3>
+      <p class="hint">Paste in Terminal. The disk image opens — drag the app to Applications, then launch it.</p>
+      <div class="cmd"><span>$ </span>curl -fsSL -o ~/Downloads/peerfold-macos.dmg "https://github.com/vincenzoml/PeerFold/releases/latest/download/peerfold-macos.dmg" &amp;&amp; xattr -d com.apple.quarantine ~/Downloads/peerfold-macos.dmg 2&gt;/dev/null; open ~/Downloads/peerfold-macos.dmg</div>
+      <ol class="steps">
+        <li>Drag <strong>PeerFold</strong> to <strong>Applications</strong></li>
+        <li>Open PeerFold and choose your PDF</li>
+      </ol>
     </div>
 
-    <h2>Install</h2>
-    <ul class="install-list">
-      <li>
-        <strong>pipx (recommended)</strong>
-        <p>Isolated CLI on your PATH. Requires Python 3.10+.</p>
+    <div class="platform-block">
+      <h3>Python</h3>
+      <p class="hint">If you already use Python 3.10+. Opens in a native window.</p>
+      <div class="install">
         <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
-      </li>
-      <li>
-        <strong>pip</strong>
-        <p>Inside an existing virtual environment.</p>
-        <div class="cmd"><span>$ </span>pip install peerfold-review</div>
-      </li>
-      <li>
-        <strong>macOS</strong>
-        <p><strong>Recommended:</strong> <code>peerfold-macos.dmg</code> — open it, drag <strong>PeerFold.app</strong> to Applications, double-click and pick your PDF.</p>
-        <div class="cmd"><span>$ </span>curl -fsSL -o ~/Downloads/peerfold-macos.dmg "https://github.com/vincenzoml/PeerFold/releases/latest/download/peerfold-macos.dmg" &amp;&amp; xattr -d com.apple.quarantine ~/Downloads/peerfold-macos.dmg 2&gt;/dev/null; open ~/Downloads/peerfold-macos.dmg</div>
-        <p>Or download <code>peerfold-macos.command</code> — double-click to open Terminal (not Safari).</p>
-      </li>
-      <li>
-        <strong>Linux</strong>
-        <p><code>peerfold-linux</code> — single self-extracting file.</p>
-        <div class="cmd"><span>$ </span>chmod +x peerfold-linux</div>
-        <div class="cmd"><span>$ </span>./peerfold-linux manuscript.pdf --reviewer RB</div>
-      </li>
-      <li>
-        <strong>Windows</strong>
-        <p><code>peerfold-win.exe</code> — single self-extracting installer-style binary.</p>
-        <div class="cmd"><span>&gt; </span>peerfold-win.exe manuscript.pdf --reviewer RB</div>
-      </li>
-    </ul>
+        <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
+      </div>
+    </div>
+
+    <div class="platform-block">
+      <h3>Linux &amp; Windows</h3>
+      <p class="hint">Download the binary for your system from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then run:</p>
+      <div class="cmd"><span>$ </span>./peerfold-linux manuscript.pdf --reviewer RB</div>
+      <div class="cmd"><span>&gt; </span>peerfold-win.exe manuscript.pdf --reviewer RB</div>
+    </div>
 
     <h2>Built for peer review</h2>
     <ul class="features">

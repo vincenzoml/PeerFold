@@ -51,6 +51,7 @@ def installed_version(py: Path) -> str | None:
 
 
 def install_pinned(py: Path) -> None:
+    subprocess.run([str(py), "-m", "pip", "install", "-U", "pip"], check=True)
     subprocess.run(
         [str(py), "-m", "pip", "install", f"{PACKAGE}=={PEERFOLD_VERSION}"],
         check=True,

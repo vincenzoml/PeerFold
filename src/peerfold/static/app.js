@@ -177,9 +177,18 @@ function showWelcomeScreen() {
   const el = document.createElement("div");
   el.className = "welcome-screen";
   el.innerHTML = `
-    <strong>PeerFold</strong>
-    <p>Open a PDF to review — drag from Finder, <strong>Open…</strong> (⌘O), or drop here. Review copy saves beside the original.</p>
-    <button type="button" class="btn primary" data-welcome-open>Open PDF…</button>
+    <div class="welcome-card">
+      <div class="welcome-mark" aria-hidden="true"></div>
+      <h2 class="welcome-title">Open a PDF to review</h2>
+      <p class="welcome-lead">Highlight text, write comments, export a copy with standard PDF annotations.</p>
+      <div class="welcome-dropzone">
+        <p class="welcome-drop-label">Drop PDF here</p>
+        <p class="welcome-drop-sub">Review file saves beside the original</p>
+        <span class="welcome-or">or</span>
+        <button type="button" class="btn primary welcome-open" data-welcome-open>Open PDF…</button>
+        <p class="welcome-shortcut"><kbd>⌘O</kbd></p>
+      </div>
+    </div>
   `;
   el.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
     void pickAndOpenPdf();
@@ -303,13 +312,13 @@ function wireOpenPdf() {
     el.addEventListener("dragover", (ev) => {
       if (![...ev.dataTransfer?.types || []].includes("Files")) return;
       ev.preventDefault();
-      pagesEl?.querySelector(".welcome-screen")?.classList.add("is-dragover");
+      pagesEl?.querySelector(".welcome-dropzone")?.classList.add("is-dragover");
     });
     el.addEventListener("dragleave", () => {
-      pagesEl?.querySelector(".welcome-screen")?.classList.remove("is-dragover");
+      pagesEl?.querySelector(".welcome-dropzone")?.classList.remove("is-dragover");
     });
     el.addEventListener("drop", (ev) => {
-      pagesEl?.querySelector(".welcome-screen")?.classList.remove("is-dragover");
+      pagesEl?.querySelector(".welcome-dropzone")?.classList.remove("is-dragover");
       const file = [...ev.dataTransfer?.files || []].find((f) =>
         f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
       );

@@ -1369,8 +1369,14 @@ def run_server(
     port: int = 0,
     ui: str = "webview",
 ) -> None:
-    """Start PeerFold. ui: webview (default), browser, or none."""
-    from peerfold.ui import open_url, open_webview_or_browser
+    """Start PeerFold. ui: webview (default), web, or none."""
+    from peerfold.ui import (
+        WebviewUnavailableError,
+        headless_environment,
+        launch_web_ui,
+        open_webview_strict,
+        webview_unavailable_help,
+    )
 
     if pdf is not None:
         pdf = pdf.resolve()
@@ -1378,6 +1384,13 @@ def run_server(
             raise SystemExit(f"PDF not found: {pdf}")
 
     reviewer = sanitize_reviewer(reviewer or default_reviewer())
+    static = static_root()
+    if not (static / "index.html").is_file():
+        raise SystemExit(
+            "PeerFold UI files are missing from this install "
+            f"(expected {static / 'index.html'}). "
+            "Run: python3 scripts/peerfold.py --update"
+        )
     session = ServerSession(reviewer, pdf)
     chosen = pick_port(port)
     url = f"http://127.0.0.1:{chosen}/"
@@ -1393,6 +1406,10 @@ def run_server(
     else:
         print("PeerFold")
     print(f"Open: {url}")
+
+    if ui == "webview" and headless_environment():
+        print(webview_unavailable_help(url=url), file=sys.stderr)
+        raise SystemExit(1)
 
     if ui == "none":
         session._ready.wait()
@@ -1414,19 +1431,17 @@ def run_server(
 
     if ui == "webview":
         try:
-            mode = open_webview_or_browser(url, title)
-            if mode == "browser":
-                try:
-                    thread.join()
-                except KeyboardInterrupt:
-                    print("\nStopping…")
+            open_webview_strict(url, title)
+        except WebviewUnavailableError as exc:
+            print(webview_unavailable_help(url=url, detail=str(exc)), file=sys.stderr)
+            raise SystemExit(1) from exc
         finally:
             server.shutdown()
             server.server_close()
             session.close()
         return
 
-    open_url(url)
+    launch_web_ui(url)
     try:
         thread.join()
     except KeyboardInterrupt:

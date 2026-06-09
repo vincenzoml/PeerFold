@@ -34,9 +34,10 @@ def main() -> None:
     ap.add_argument("--port", type=int, default=0, help="Local port (default: ephemeral)")
     ui = ap.add_mutually_exclusive_group()
     ui.add_argument(
+        "--web",
         "--browser",
         action="store_true",
-        help="Open in the system browser instead of the embedded window",
+        help="Open in your system browser (use this over SSH)",
     )
     ui.add_argument(
         "--no-browser",
@@ -48,8 +49,8 @@ def main() -> None:
 
     if args.no_browser:
         mode = "none"
-    elif args.browser:
-        mode = "browser"
+    elif args.web:
+        mode = "web"
     else:
         mode = "webview"
 

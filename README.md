@@ -1,6 +1,6 @@
 # PeerFold
 
-Review PDFs in a native window — embedded WebKit/WebView2 via [pywebview](https://pywebview.flowrl.com/), no browser tabs or URL bar. Use `--browser` for the system browser instead. Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
+Review PDFs in a native window — embedded WebKit/WebView2 via [pywebview](https://pywebview.flowrl.com/), no browser tabs or URL bar. Use `--web` for your system browser (recommended over SSH). Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
 
 Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 
@@ -56,7 +56,11 @@ mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py
 python3 scripts/peerfold.py review-builds/paper.pdf --reviewer AB
 ```
 
-Add `.venv-peerfold/` to `.gitignore`. Re-running upgrades PeerFold from PyPI.
+Add `.venv-peerfold/` to `.gitignore`. The launcher pins a PyPI version in `PEERFOLD_VERSION` so everyone on the repo uses the same build. Upgrade deliberately:
+
+```bash
+python3 scripts/peerfold.py --update   # bumps the pin — commit scripts/peerfold.py
+```
 3. **Standalone app** — `curl -fsSL …/install.sh | bash` (macOS/Linux) or the Windows PowerShell installer; no Python needed.
 
 Manual downloads: [GitHub Releases](https://github.com/vincenzoml/PeerFold/releases/latest).
@@ -66,10 +70,10 @@ Install scripts: [install.sh](https://vincenzoml.github.io/PeerFold/install.sh) 
 ## Usage
 
 ```bash
-peerfold paper.pdf                  # open browser UI
+peerfold paper.pdf                  # native window (default)
 peerfold paper.pdf -r VC            # reviewer short name (filename + metadata)
 peerfold paper.pdf --port 8765      # fixed port
-peerfold paper.pdf --browser        # system browser instead of native window
+peerfold paper.pdf --web            # system browser (use over SSH)
 peerfold paper.pdf --no-browser     # server only
 ```
 

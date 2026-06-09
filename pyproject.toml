@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peerfold-review"
-version = "0.1.14"
+version = "0.1.15"
 description = "Local PDF review with browser UI and Acrobat-compatible highlights"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -42,6 +42,9 @@ Issues = "https://github.com/vincenzoml/PeerFold/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+peerfold = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

@@ -1032,6 +1032,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self.send_error(403)
                 return
             return self._file(target)
+        if path == "/api/update-check":
+            return self._json(200, update_check_payload())
         if path == "/api/document":
             if self._guard_api():
                 return
@@ -1154,6 +1156,62 @@ def pick_port(preferred: int) -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+UPDATE_REPO = "vincenzoml/PeerFold"
+UPDATE_URL = f"https://github.com/{UPDATE_REPO}/releases/latest"
+
+
+def parse_version_parts(version: str) -> tuple[int, ...]:
+    parts: list[int] = []
+    for piece in version.lstrip("v").split("."):
+        num = ""
+        for ch in piece:
+            if ch.isdigit():
+                num += ch
+            else:
+                break
+        parts.append(int(num) if num else 0)
+    return tuple(parts)
+
+
+def version_newer(latest: str, current: str) -> bool:
+    return parse_version_parts(latest) > parse_version_parts(current)
+
+
+def fetch_latest_release_version() -> str | None:
+    import json
+    from urllib.error import URLError
+    from urllib.request import Request, urlopen
+
+    try:
+        req = Request(
+            f"https://api.github.com/repos/{UPDATE_REPO}/releases/latest",
+            headers={
+                "Accept": "application/vnd.github+json",
+                "User-Agent": "PeerFold",
+            },
+        )
+        with urlopen(req, timeout=4) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+        tag = str(data.get("tag_name", "")).lstrip("v")
+        return tag or None
+    except (URLError, OSError, TimeoutError, ValueError, KeyError):
+        return None
+
+
+def update_check_payload() -> dict[str, Any]:
+    from peerfold import __version__
+
+    current = __version__
+    latest = fetch_latest_release_version()
+    available = bool(latest and version_newer(latest, current))
+    return {
+        "current": current,
+        "latest": latest,
+        "update_available": available,
+        "url": UPDATE_URL,
+    }
 
 
 def run_server(

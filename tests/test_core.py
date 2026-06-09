@@ -7,9 +7,11 @@ from peerfold.core import (
     build_citation_index,
     cite_numbers_for_link,
     import_fitz,
+    parse_version_parts,
     pick_cite_for_click,
     sanitize_reviewer,
     static_root,
+    version_newer,
 )
 
 
@@ -32,6 +34,14 @@ def test_static_root_exists():
     root = static_root()
     assert (root / "index.html").is_file()
     assert (root / "app.js").is_file()
+
+
+def test_version_newer():
+    assert version_newer("0.1.12", "0.1.11")
+    assert version_newer("0.2.0", "0.1.99")
+    assert not version_newer("0.1.11", "0.1.11")
+    assert not version_newer("0.1.10", "0.1.11")
+    assert parse_version_parts("v0.1.12") == (0, 1, 12)
 
 
 def test_citation_helpers_on_sample_pdf():

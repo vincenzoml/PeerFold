@@ -83,7 +83,7 @@ const LS_COMMENTS_COLLAPSED = "peerfold-comments-collapsed";
 
 const LINE_Y_TOL = 4;
 const DRAG_THRESHOLD = 4;
-const LS_KEY = "peerfold-emergency";
+const LS_UPDATE_DISMISS = "peerfold-update-dismiss";
 const HISTORY_MAX = 80;
 const $ = (sel) => document.querySelector(sel);
 const pagesViewportEl = $("#pages-viewport");
@@ -165,10 +165,40 @@ async function waitForDocument() {
 }
 
 function toast(msg, ms = 2200) {
+  toastEl.onclick = null;
+  toastEl.style.cursor = "";
+  toastEl.classList.remove("toast-update");
   toastEl.textContent = msg;
   toastEl.hidden = false;
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toastEl.hidden = true; }, ms);
+}
+
+async function checkForUpdates() {
+  try {
+    const info = await api("/api/update-check");
+    if (!info.update_available || !info.latest) return;
+    const dismissKey = `${LS_UPDATE_DISMISS}:${info.latest}`;
+    if (sessionStorage.getItem(dismissKey)) return;
+    sessionStorage.setItem(dismissKey, "1");
+    toastEl.textContent = `Update available: v${info.latest} — click to download`;
+    toastEl.hidden = false;
+    toastEl.classList.add("toast-update");
+    toastEl.style.cursor = "pointer";
+    toastEl.onclick = () => {
+      window.open(info.url, "_blank", "noopener,noreferrer");
+      toastEl.hidden = true;
+    };
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => {
+      toastEl.hidden = true;
+      toastEl.onclick = null;
+      toastEl.style.cursor = "";
+      toastEl.classList.remove("toast-update");
+    }, 12000);
+  } catch (_) {
+    /* offline or check failed */
+  }
 }
 
 function hideCtx() {
@@ -2765,6 +2795,7 @@ async function init() {
   });
   startDiskSync();
   updateUndoRedoUi();
+  void checkForUpdates();
 }
 
 init().catch((err) => {

@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="PeerFold — review PDFs in your browser with standard highlight annotations.">
+  <meta name="description" content="PeerFold — review scientific PDFs in your browser. Click, type, open references. One tool for peer review.">
   <title>PeerFold</title>
   <style>
     :root {
@@ -59,7 +59,7 @@
       margin-top: 0.75rem;
       font-size: 1.125rem;
       color: var(--muted);
-      max-width: 36em;
+      max-width: 38em;
     }
     .shot {
       margin: 2.5rem 0;
@@ -129,24 +129,25 @@
   <div class="wrap">
     <header>
       <h1><span class="mark" aria-hidden="true"></span>PeerFold</h1>
-      <p class="tagline">Review PDFs in your browser. Highlights are real PDF annotations — readable in Acrobat, Preview, and every reader.</p>
+      <p class="tagline">One task: review a scientific paper. Select text, type your comment, move on. Citations open in a popup — no hunting through the bibliography. Highlights save as standard PDF annotations you can share with authors.</p>
     </header>
 
     <figure class="shot">
-      <img src="screenshot.png" width="1440" height="900" alt="PeerFold reviewing a PDF with highlights and comments">
+      <img src="screenshot.png" width="1440" height="900" alt="PeerFold with highlighted text and reviewer comments on a fictional paper">
     </figure>
 
     <div class="install">
       <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
-      <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer VC</div>
+      <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
     </div>
 
-    <h2>Features</h2>
+    <h2>Built for peer review</h2>
     <ul class="features">
-      <li>Span-accurate highlights with threaded comments</li>
-      <li>Citation links open DOIs and URLs directly</li>
-      <li>Autosave, multi-tab sync, reviewer handoff</li>
-      <li>Saved as <code>paper_VC-2026-06-09.pdf</code> beside the original</li>
+      <li>Click and type — select a span, comment immediately, no dialog maze</li>
+      <li>Comments pane stays beside the PDF; jump between notes in one click</li>
+      <li>Numbered citations open DOIs and URLs in a popup window</li>
+      <li>Autosave, undo, multi-tab sync for long review sessions</li>
+      <li>Exports <code>paper_RB-2026-06-09.pdf</code> with Acrobat-compatible highlights</li>
     </ul>
 
     <h2>Install</h2>

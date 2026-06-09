@@ -13,3 +13,4 @@ venv/
 .DS_Store
 *.bak
 *.tmp
+docs/demo_*.pdf

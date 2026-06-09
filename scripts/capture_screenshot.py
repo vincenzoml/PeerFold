@@ -13,7 +13,7 @@ from io import BytesIO
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-OUT = ROOT / "docs" / "screenshot.png"
+OUT = ROOT / "docs" / "hero.png"
 DEMO = ROOT / "docs" / "demo.pdf"
 PORT = 18765
 FRAME_DELAY_MS = 700

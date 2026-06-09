@@ -9,80 +9,156 @@
   <title>PeerFold</title>
   <style>
     :root {
-      --bg: #0c0c0e;
-      --fg: #ececef;
-      --muted: #8b8b96;
-      --accent: #f5d547;
-      --line: #2a2a32;
-      --panel: #141418;
+      --bg: #09090b;
+      --fg: #f4f4f5;
+      --muted: #71717a;
+      --accent: #facc15;
+      --line: #27272a;
+      --panel: #111113;
       --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       --sans: system-ui, -apple-system, sans-serif;
+      --max: 1080px;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: var(--sans);
       background: var(--bg);
       color: var(--fg);
-      line-height: 1.65;
+      line-height: 1.6;
       min-height: 100vh;
     }
-    .wrap {
-      max-width: 640px;
+    .page {
+      max-width: var(--max);
       margin: 0 auto;
-      padding: 4rem 1.25rem 4.5rem;
+      padding: 2rem 1.5rem 4rem;
     }
-    h1 {
-      font-size: clamp(1.9rem, 4.5vw, 2.35rem);
-      font-weight: 600;
-      letter-spacing: -0.03em;
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 3.5rem;
     }
-    .lede {
-      margin-top: 1.1rem;
-      font-size: 1.15rem;
-      line-height: 1.45;
-      max-width: 32em;
-    }
-    .sub {
-      margin-top: 0.65rem;
-      color: var(--muted);
-      font-size: 0.98rem;
-      max-width: 34em;
-    }
-    .shot {
-      margin: 2.25rem 0;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-      background: var(--panel);
-    }
-    .shot img { display: block; width: 100%; height: auto; }
-    section { margin-top: 2.5rem; }
-    h2 {
+    .logo {
       font-size: 0.95rem;
       font-weight: 600;
-      margin-bottom: 0.75rem;
+      letter-spacing: -0.02em;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
     }
-    p {
+    .logo-mark {
+      width: 8px;
+      height: 8px;
+      border-radius: 2px;
+      background: var(--accent);
+    }
+    .top nav {
+      display: flex;
+      gap: 1.25rem;
+    }
+    .top nav a {
       color: var(--muted);
-      font-size: 0.92rem;
-      margin: 0.45rem 0;
+      text-decoration: none;
+      font-size: 0.85rem;
+    }
+    .top nav a:hover { color: var(--fg); }
+
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+      gap: 2.5rem 3rem;
+      align-items: center;
+      margin-bottom: 4rem;
+    }
+    @media (max-width: 820px) {
+      .hero { grid-template-columns: 1fr; gap: 2rem; }
+      .hero-copy { order: 1; }
+      .hero-shot { order: 2; }
+    }
+    .lede {
+      font-size: clamp(1.35rem, 3vw, 1.75rem);
+      font-weight: 500;
+      line-height: 1.35;
+      letter-spacing: -0.025em;
+    }
+    .pitch {
+      margin-top: 1.25rem;
+      display: grid;
+      gap: 0.55rem;
+    }
+    .pitch p {
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 28em;
+    }
+    .hero-shot {
+      border-radius: 12px;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset,
+        0 24px 48px rgba(0, 0, 0, 0.45);
+    }
+    .hero-shot img {
+      display: block;
+      width: 100%;
+      height: auto;
+      vertical-align: middle;
+    }
+
+    .install {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 2rem 2.5rem;
+    }
+    @media (max-width: 720px) {
+      .install { grid-template-columns: 1fr; }
+    }
+    .block {
+      min-width: 0;
+    }
+    .block-wide {
+      grid-column: 1 / -1;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--line);
+    }
+    .block-label {
+      font-size: 0.72rem;
+      font-weight: 600;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 0.85rem;
+    }
+    .block-desc {
+      color: var(--muted);
+      font-size: 0.88rem;
+      margin-bottom: 0.75rem;
+      max-width: 36em;
     }
     .copy-cmd {
       display: block;
       width: 100%;
       text-align: left;
       font-family: var(--mono);
-      font-size: 0.82rem;
-      line-height: 1.5;
+      font-size: 0.78rem;
+      line-height: 1.55;
       background: var(--panel);
       border: 1px solid var(--line);
       border-radius: 8px;
-      padding: 0.8rem 0.9rem;
-      margin: 0.45rem 0 0.9rem;
-      color: var(--fg);
+      padding: 0.75rem 0.85rem;
+      margin-bottom: 0.55rem;
+      color: #d4d4d8;
       cursor: pointer;
+      transition: border-color 0.12s, background 0.12s;
     }
-    .copy-cmd:hover { border-color: #3a3a44; }
+    .copy-cmd:last-of-type { margin-bottom: 0; }
+    .copy-cmd:hover {
+      border-color: #3f3f46;
+      background: #18181b;
+    }
     .copy-cmd:focus-visible {
       outline: 2px solid var(--accent);
       outline-offset: 2px;
@@ -95,79 +171,92 @@
     }
     .copy-label {
       display: block;
-      min-height: 1.1em;
-      margin-top: 0.45rem;
+      min-height: 1em;
+      margin-top: 0.35rem;
       font-family: var(--sans);
-      font-size: 0.75rem;
+      font-size: 0.7rem;
       color: var(--accent);
       visibility: hidden;
     }
     .copy-cmd.is-copied .copy-label { visibility: visible; }
-    .note { font-size: 0.85rem; color: var(--muted); }
-    footer {
-      margin-top: 3rem;
-      padding-top: 1.25rem;
-      border-top: 1px solid var(--line);
-      display: flex;
-      gap: 1.25rem;
-      flex-wrap: wrap;
-    }
-    footer a {
+    .hint {
+      margin-top: 0.65rem;
+      font-size: 0.82rem;
       color: var(--muted);
-      text-decoration: none;
-      font-size: 0.88rem;
     }
-    footer a:hover { color: var(--fg); }
-    code { font-family: var(--mono); font-size: 0.88em; }
+    code {
+      font-family: var(--mono);
+      font-size: 0.88em;
+      color: #a1a1aa;
+    }
+    footer {
+      margin-top: 3.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 0.82rem;
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>PeerFold</h1>
-      <p class="lede">PDF annotation for paper reviews. Click, type, done.</p>
-      <p class="sub">Notes become standard PDF highlights — open in any reader, attach to an email, no export step.</p>
-      <p class="sub">Drop one launcher in your paper source folder; the pinned version rides along in git so co-authors stay aligned.</p>
+  <div class="page">
+    <header class="top">
+      <div class="logo"><span class="logo-mark" aria-hidden="true"></span>PeerFold</div>
+      <nav>
+        <a href="https://github.com/vincenzoml/PeerFold">GitHub</a>
+        <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Download</a>
+        <a href="https://pypi.org/project/peerfold-review/">PyPI</a>
+      </nav>
     </header>
 
-    <figure class="shot">
-      <img src="hero.png" width="1440" height="900" alt="PeerFold showing a PDF with highlights and comments">
-    </figure>
-
-    <section>
-      <h2>Install</h2>
-      <p class="note">macOS / Linux</p>
-      <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
-        <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <p class="note">Windows</p>
-      <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
-        <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <p class="note">Python 3.10+ · <code>peerfold paper.pdf --reviewer AB</code> · SSH: add <code>--web</code></p>
-      <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
-        <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="lede">PDF annotation for paper reviews. Click, type, done.</p>
+        <div class="pitch">
+          <p>Notes become standard PDF highlights — open in any reader, attach to an email, no export step.</p>
+          <p>Drop one launcher in your paper source folder; the pinned version rides along in git so co-authors stay aligned.</p>
+        </div>
+      </div>
+      <figure class="hero-shot">
+        <img src="hero.png" width="1440" height="900" alt="PeerFold with highlighted PDF and comment sidebar">
+      </figure>
     </section>
 
-    <section>
-      <h2>Paper directory</h2>
-      <p>Add the launcher once; commit it, gitignore <code>.venv-peerfold/</code>. Everyone runs the same pinned build from the shared folder.</p>
-      <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
-        <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <p class="note"><code>python3 scripts/peerfold.py paper.pdf</code> · new release: <code>--update</code>, then commit the script.</p>
-    </section>
+    <div class="install">
+      <div class="block">
+        <div class="block-label">Native app</div>
+        <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
+          <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
+          <span class="copy-label" aria-live="polite"></span>
+        </button>
+        <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
+          <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
+          <span class="copy-label" aria-live="polite"></span>
+        </button>
+        <p class="hint">macOS / Linux · Windows</p>
+      </div>
 
-    <footer>
-      <a href="https://github.com/vincenzoml/PeerFold">GitHub</a>
-      <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Download</a>
-      <a href="https://pypi.org/project/peerfold-review/">PyPI</a>
-    </footer>
+      <div class="block">
+        <div class="block-label">Python</div>
+        <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
+          <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
+          <span class="copy-label" aria-live="polite"></span>
+        </button>
+        <p class="hint">3.10+ · SSH: add <code>--web</code></p>
+      </div>
+
+      <div class="block block-wide">
+        <div class="block-label">Paper repo</div>
+        <p class="block-desc">One script in the project — commit it, gitignore <code>.venv-peerfold/</code>, everyone runs the same pin.</p>
+        <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
+          <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
+          <span class="copy-label" aria-live="polite"></span>
+        </button>
+        <p class="hint"><code>python3 scripts/peerfold.py paper.pdf</code> · <code>--update</code> then commit the script</p>
+      </div>
+    </div>
+
+    <footer>MIT · standard PDF highlights via PyMuPDF</footer>
   </div>
   <script>
     for (const btn of document.querySelectorAll(".copy-cmd")) {

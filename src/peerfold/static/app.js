@@ -442,8 +442,15 @@ function clearDraft() {
   renderCommentsPane();
 }
 
+function syncDraftTextFromEditor() {
+  if (!state.draft || state.draft.committed) return;
+  if (commentEditorTa && !commentEditorEl?.hidden) {
+    state.draft.text = commentEditorTa.value;
+  }
+}
+
 function draftText() {
-  return trimText(commentEditorTa?.value ?? state.draft?.ta?.value ?? "");
+  return trimText(state.draft?.text ?? commentEditorTa?.value ?? "");
 }
 
 async function settleDraft() {
@@ -468,6 +475,7 @@ document.addEventListener("click", (e) => {
   if (e.target.closest("#comment-editor")) return;
   if (e.target.closest(".comment-card.draft")) return;
   if (e.target.closest("#viewer")) return;
+  syncDraftTextFromEditor();
   if (draftText()) void settleDraft();
   else clearDraft();
 });
@@ -525,7 +533,7 @@ function hasUnsavedChanges() {
   if (state.savePending > 0) return true;
   if (state.localDirty) return true;
   if (state.doc?.unsaved) return true;
-  if (state.draft && trimText(state.draft.ta?.value)) return true;
+  if (state.draft && trimText(state.draft.text)) return true;
   if (state.pendingNote) {
     const ann = state.annotations.get(state.pendingNote.id);
     if (ann && state.pendingNote.ta.value !== ann.content) return true;
@@ -853,7 +861,9 @@ function openCommentEditor({ mode, anchorCard, color, title, meta, quote, value,
   const editorKey = mode === "draft" ? "draft" : String(state.focusId ?? title);
   const same = state.commentEditor?.mode === mode && state.commentEditor?.key === editorKey;
   const keepTyping = same && document.activeElement === commentEditorTa;
-  const text = keepTyping ? commentEditorTa.value : (value ?? "");
+  const text = keepTyping
+    ? commentEditorTa.value
+    : (mode === "draft" ? (state.draft?.text ?? value ?? "") : (value ?? ""));
   const selStart = keepTyping ? commentEditorTa.selectionStart : text.length;
   const selEnd = keepTyping ? commentEditorTa.selectionEnd : text.length;
 
@@ -905,10 +915,13 @@ function syncCommentEditor() {
       title: "New comment",
       meta: `p.${state.draft.pageIndex + 1}`,
       quote: excerptFor({ page: state.draft.pageIndex, rects: state.draft.rects }),
-      value: state.draft.ta?.value ?? "",
+      value: state.draft.text ?? "",
       placeholder: "Write your comment…",
       foot: "Autosaves as you type · Esc saves · Shift+↵ new line",
-      onInput: autosizeCommentEditorTa,
+      onInput: () => {
+        syncDraftTextFromEditor();
+        autosizeCommentEditorTa();
+      },
       onKeydown: onDraftEditorKeydown,
     });
     state.draft.ta = ta;
@@ -945,13 +958,15 @@ function syncCommentEditor() {
 
 async function onDraftEditorInputSave() {
   if (!state.draft || state.draft.committed || !commentEditorTa) return;
-  if (trimText(commentEditorTa.value) === "") return;
+  syncDraftTextFromEditor();
+  if (draftText() === "") return;
   state.draft.committed = true;
-  const { pageIndex: page, spanIds: ids, color } = state.draft;
+  const { pageIndex: page, spanIds: ids, color, text } = state.draft;
+  const content = text ?? commentEditorTa.value;
   try {
     const created = await withSave(() => api("/api/annotations", {
       method: "POST",
-      body: JSON.stringify({ page, span_ids: ids, color, content: commentEditorTa.value }),
+      body: JSON.stringify({ page, span_ids: ids, color, content }),
     }));
     state.annotations.set(created.id, created);
     if (!state.historyApplying) {
@@ -977,6 +992,8 @@ async function onDraftEditorInputSave() {
     });
   } catch (err) {
     state.draft.committed = false;
+    syncDraftTextFromEditor();
+    syncCommentEditor();
     toast(err.message || "Could not save highlight");
   }
 }
@@ -992,20 +1009,14 @@ function onDraftEditorKeydown(ev) {
 }
 
 commentEditorTa?.addEventListener("input", () => {
+  if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   autosizeCommentEditorTa();
   if (!state.draft || state.draft.committed || !draftText()) return;
   clearTimeout(draftSaveTimer);
   draftSaveTimer = setTimeout(() => {
     draftSaveTimer = null;
     void onDraftEditorInputSave();
-  }, 200);
-});
-
-commentEditorTa?.addEventListener("blur", () => {
-  if (!state.draft || state.draft.committed || !draftText()) return;
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
-  void onDraftEditorInputSave();
+  }, 400);
 });
 
 function focusDraftNote() {
@@ -1740,7 +1751,9 @@ function buildDraftCard() {
   inner.appendChild(hint);
   card.appendChild(inner);
 
-  card.addEventListener("click", () => {
+  card.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    syncCommentEditor();
     commentEditorTa?.focus();
   });
 
@@ -1853,7 +1866,14 @@ function buildCommentCard(ann) {
 }
 
 function renderCommentsPane() {
+  syncDraftTextFromEditor();
   const keepFocus = state.focusId;
+  const draftOpen = state.draft && !state.draft.committed;
+  if (draftOpen && isCommentEditorActive() && commentsListEl.querySelector(".comment-card.draft")) {
+    commentsCountEl.textContent = String(state.annotations.size);
+    updateCommentSelectionUi();
+    return;
+  }
   state.pendingNote = null;
   commentsListEl.replaceChildren();
 
@@ -2015,6 +2035,7 @@ function showDraft(pageIndex, spanIds) {
     color: state.color,
     committed: false,
     createdAt: Date.now(),
+    text: "",
   };
   renderDraftOverlay(meta, rects);
   clearNativeSelection();
@@ -2077,6 +2098,7 @@ function focusAnnotation(id, {
     const card = commentsListEl.querySelector(`.comment-card[data-id="${id}"]`);
     card?.scrollIntoView({ block: "nearest", behavior });
   }
+  syncCommentEditor();
 }
 
 async function blurComment() {
@@ -2830,20 +2852,32 @@ function routeDraftTyping(ev) {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return false;
   if (!state.draft || state.draft.committed) return false;
   if (Date.now() - (state.draft.createdAt ?? 0) < 300) return false;
-  const ta = state.draft.ta;
+  const ta = state.draft.ta ?? commentEditorTa;
   if (!ta || document.activeElement === ta) return false;
   if (ev.target.closest("textarea, input, select, [contenteditable]")) return false;
   if (ev.key === "Escape") return false;
   if (ev.key.length !== 1 && ev.key !== "Backspace" && ev.key !== "Enter") return false;
   ev.preventDefault();
+  syncCommentEditor();
   ta.focus();
+  const start = ta.selectionStart ?? ta.value.length;
+  const end = ta.selectionEnd ?? start;
   if (ev.key === "Backspace") {
-    ta.value = ta.value.slice(0, -1);
+    if (start === end && start > 0) {
+      ta.value = ta.value.slice(0, start - 1) + ta.value.slice(end);
+      ta.setSelectionRange(start - 1, start - 1);
+    } else if (start !== end) {
+      ta.value = ta.value.slice(0, start) + ta.value.slice(end);
+      ta.setSelectionRange(start, start);
+    }
   } else if (ev.key === "Enter") {
-    ta.value += "\n";
+    ta.value = ta.value.slice(0, start) + "\n" + ta.value.slice(end);
+    ta.setSelectionRange(start + 1, start + 1);
   } else {
-    ta.value += ev.key;
+    ta.value = ta.value.slice(0, start) + ev.key + ta.value.slice(end);
+    ta.setSelectionRange(start + 1, start + 1);
   }
+  syncDraftTextFromEditor();
   ta.dispatchEvent(new Event("input", { bubbles: true }));
   return true;
 }

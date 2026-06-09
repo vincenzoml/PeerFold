@@ -59,6 +59,8 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             dist/peerfold-win.exe --version
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            "dist/${{ matrix.name }}/${{ matrix.name }}" --version
           else
             "dist/${{ matrix.name }}" --version
           fi

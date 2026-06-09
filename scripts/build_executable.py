@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build a one-file PeerFold executable with PyInstaller."""
+"""Build PeerFold standalone executables with PyInstaller."""
 
 from __future__ import annotations
 
@@ -13,50 +13,29 @@ from pathlib import Path
 
 def artifact_path(dist: Path, name: str) -> Path:
     base = name[:-4] if name.lower().endswith(".exe") else name
+    if sys.platform == "darwin":
+        return dist / base / base
     if sys.platform == "win32":
         return dist / f"{base}.exe"
     return dist / base
 
 
 def pyinstaller_extras() -> list[str]:
-    extras = [
+    # Standalone builds use the system browser (no pywebview) for fast, reliable startup.
+    return [
         "--hidden-import",
         "fitz",
         "--collect-submodules",
         "fitz",
-        "--hidden-import",
-        "webview",
-        "--collect-all",
-        "webview",
-        "--collect-all",
-        "clr_loader",
-        "--copy-metadata",
-        "pywebview",
     ]
-    if sys.platform == "win32":
-        extras.extend(
-            [
-                "--hidden-import",
-                "webview.platforms.winforms",
-                "--hidden-import",
-                "webview.platforms.edgechromium",
-            ]
-        )
-    elif sys.platform == "darwin":
-        extras.extend(
-            [
-                "--hidden-import",
-                "webview.platforms.cocoa",
-            ]
-        )
-    else:
-        extras.extend(
-            [
-                "--hidden-import",
-                "webview.platforms.gtk",
-            ]
-        )
-    return extras
+
+
+def package_macos(dist: Path, name: str) -> Path:
+    archive = dist / f"{name}.zip"
+    if archive.exists():
+        archive.unlink()
+    shutil.make_archive(str(archive.with_suffix("")), "zip", dist, name)
+    return archive
 
 
 def main() -> None:
@@ -82,11 +61,13 @@ def main() -> None:
     if dist.exists():
         shutil.rmtree(dist)
 
+    # macOS onefile hangs in the PyInstaller bootloader; use onedir + zip.
+    bundle = "--onedir" if sys.platform == "darwin" else "--onefile"
     cmd = [
         sys.executable,
         "-m",
         "PyInstaller",
-        "--onefile",
+        bundle,
         "--name",
         base,
         "--add-data",
@@ -95,10 +76,17 @@ def main() -> None:
         str(root / "src" / "peerfold" / "cli.py"),
     ]
     subprocess.run(cmd, cwd=root, check=True)
+
     out = artifact_path(dist, base)
     if not out.is_file():
         raise SystemExit(f"Expected build output missing: {out}")
-    print(f"Built {out}")
+
+    if sys.platform == "darwin":
+        archive = package_macos(dist, base)
+        print(f"Built {out}")
+        print(f"Packaged {archive}")
+    else:
+        print(f"Built {out}")
 
 
 if __name__ == "__main__":

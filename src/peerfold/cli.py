@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from pathlib import Path
 
 from peerfold import __version__
-from peerfold.core import run_server
 
 
 def main() -> None:
+    if getattr(sys, "frozen", False):
+        print("PeerFold loading…", file=sys.stderr, flush=True)
     ap = argparse.ArgumentParser(
         prog="peerfold",
         description="Review PDFs in a native window. Highlights are standard PDF annotations.",
@@ -41,8 +43,12 @@ def main() -> None:
         mode = "none"
     elif args.browser:
         mode = "browser"
+    elif getattr(sys, "frozen", False):
+        mode = "browser"
     else:
         mode = "webview"
+
+    from peerfold.core import run_server
 
     run_server(
         args.pdf,

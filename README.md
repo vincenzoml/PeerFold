@@ -15,11 +15,11 @@ Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 |----------|--------|
 | Any (Python 3.10+) | `pipx install peerfold-review` |
 | Any (venv) | `pip install peerfold-review` |
-| macOS | [peerfold-macos](https://github.com/vincenzoml/PeerFold/releases/latest) |
+| macOS | [peerfold-macos.zip](https://github.com/vincenzoml/PeerFold/releases/latest) |
 | Linux | [peerfold-linux](https://github.com/vincenzoml/PeerFold/releases/latest) |
 | Windows | [peerfold-win.exe](https://github.com/vincenzoml/PeerFold/releases/latest) |
 
-Standalone binaries: `chmod +x` on macOS/Linux, then `./peerfold-macos paper.pdf`.
+macOS: unzip `peerfold-macos.zip`, then `./peerfold-macos/peerfold-macos paper.pdf`. Linux: `chmod +x peerfold-linux`.
 
 ## Usage
 

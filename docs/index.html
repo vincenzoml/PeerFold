@@ -158,7 +158,7 @@
     <div class="install">
       <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
       <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
-      <p style="color:var(--muted);font-size:0.95rem;margin-top:-0.25rem">Opens an embedded window by default. Pass <code>--browser</code> for Chrome/Safari instead.</p>
+      <p style="color:var(--muted);font-size:0.95rem;margin-top:-0.25rem">Opens an embedded window (pip/pipx). Standalone binaries use your system browser.</p>
     </div>
 
     <h2>Install</h2>
@@ -174,10 +174,10 @@
         <div class="cmd"><span>$ </span>pip install peerfold-review</div>
       </li>
       <li>
-        <strong>macOS — standalone binary</strong>
-        <p>Download <code>peerfold-macos</code> from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then:</p>
-        <div class="cmd"><span>$ </span>chmod +x peerfold-macos</div>
-        <div class="cmd"><span>$ </span>./peerfold-macos manuscript.pdf --reviewer RB</div>
+        <strong>macOS — standalone app</strong>
+        <p>Download <code>peerfold-macos.zip</code> from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>. First launch may take a minute while libraries load. Opens in your browser.</p>
+        <div class="cmd"><span>$ </span>unzip peerfold-macos.zip</div>
+        <div class="cmd"><span>$ </span>./peerfold-macos/peerfold-macos manuscript.pdf --reviewer RB</div>
       </li>
       <li>
         <strong>Linux — standalone binary</strong>

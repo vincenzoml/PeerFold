@@ -121,10 +121,13 @@
       color: var(--soft);
     }
 
-    /* install */
+    /* install paths */
+    .install {
+      padding-bottom: 88px;
+    }
     .install-head {
       text-align: center;
-      padding-bottom: 40px;
+      padding-bottom: 48px;
     }
     .install-head h2 {
       font-size: 32px;
@@ -137,14 +140,48 @@
       font-size: 17px;
       color: var(--soft);
     }
-    .install-grid {
+    .paths {
       display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      padding-bottom: 16px;
+      gap: 32px;
+      max-width: 640px;
+      margin: 0 auto;
     }
-    @media (max-width: 734px) {
-      .install-grid { grid-template-columns: 1fr; }
+    .path {
+      padding-top: 32px;
+      border-top: 1px solid var(--line);
+    }
+    .path:first-child {
+      padding-top: 0;
+      border-top: none;
+    }
+    .path-tag {
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--faint);
+      margin-bottom: 6px;
+    }
+    .path h3 {
+      font-size: 21px;
+      line-height: 1.19048;
+      font-weight: 600;
+      letter-spacing: 0.011em;
+      margin-bottom: 6px;
+    }
+    .path .when {
+      font-size: 15px;
+      color: var(--soft);
+      margin-bottom: 16px;
+    }
+    .path-steps {
+      display: grid;
+      gap: 12px;
+    }
+    .step-label {
+      font-size: 13px;
+      color: var(--faint);
+      margin-bottom: -4px;
     }
     .copy-cmd {
       display: block;
@@ -183,16 +220,15 @@
       visibility: hidden;
     }
     .copy-cmd.is-copied .copy-label { visibility: visible; }
-    .install-wide { padding-bottom: 88px; }
-    .install-note {
-      margin-top: 12px;
-      font-size: 12px;
+    .path-after {
+      margin-top: 4px;
+      font-size: 13px;
+      line-height: 1.5;
       color: var(--faint);
-      text-align: center;
     }
-    .install-note code {
+    .path-after code {
       font-family: var(--mono);
-      font-size: 11px;
+      font-size: 12px;
       color: var(--soft);
     }
 
@@ -245,33 +281,59 @@
       </div>
     </section>
 
-    <section class="shell install-head">
-      <h2>Get started</h2>
-      <p>Tap a line to copy.</p>
-    </section>
+    <section class="shell install">
+      <div class="install-head">
+        <h2>Install</h2>
+        <p>Pick the one that matches your situation. Click a command to copy.</p>
+      </div>
 
-    <section class="shell install-grid">
-      <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
-        <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
-        <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
-        <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-      <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
-        <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
-        <span class="copy-label" aria-live="polite"></span>
-      </button>
-    </section>
+      <div class="paths">
+        <article class="path">
+          <div class="path-tag">Path 1</div>
+          <h3>Install the app</h3>
+          <p class="when">You want a native window on your own machine. No Python required.</p>
+          <div class="path-steps">
+            <p class="step-label">macOS or Linux</p>
+            <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
+              <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
+              <span class="copy-label" aria-live="polite"></span>
+            </button>
+            <p class="step-label">Windows</p>
+            <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
+              <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
+              <span class="copy-label" aria-live="polite"></span>
+            </button>
+          </div>
+          <p class="path-after">Then run <code>peerfold paper.pdf --reviewer AB</code></p>
+        </article>
 
-    <p class="shell install-note install-wide">
-      <code>python3 scripts/peerfold.py paper.pdf</code> · gitignore <code>.venv-peerfold/</code> · upgrade with <code>--update</code>
-    </p>
+        <article class="path">
+          <div class="path-tag">Path 2</div>
+          <h3>Use Python</h3>
+          <p class="when">You already have Python 3.10+ and prefer pip — any OS, including over SSH.</p>
+          <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
+            <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
+          <p class="path-after">Remote server with no display: add <code>--web</code> to open in your browser.</p>
+        </article>
+
+        <article class="path">
+          <div class="path-tag">Path 3</div>
+          <h3>Add to a paper repo</h3>
+          <p class="when">You share a git folder with co-authors and want everyone on the same pinned version.</p>
+          <p class="step-label">Once — from the project root</p>
+          <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
+            <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
+          <p class="path-after">
+            Commit <code>scripts/peerfold.py</code>. Each time: <code>python3 scripts/peerfold.py paper.pdf</code><br>
+            New release: <code>python3 scripts/peerfold.py --update</code>, then commit the script again.
+          </p>
+        </article>
+      </div>
+    </section>
   </main>
 
   <footer class="shell">Copyright © 2026 PeerFold. MIT License.</footer>

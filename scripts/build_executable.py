@@ -12,9 +12,10 @@ from pathlib import Path
 
 
 def artifact_path(dist: Path, name: str) -> Path:
+    base = name[:-4] if name.lower().endswith(".exe") else name
     if sys.platform == "win32":
-        return dist / f"{name}.exe"
-    return dist / name
+        return dist / f"{base}.exe"
+    return dist / base
 
 
 def main() -> None:
@@ -54,8 +55,10 @@ def main() -> None:
         "fitz",
         str(root / "src" / "peerfold" / "cli.py"),
     ]
+    base = args.name[:-4] if args.name.lower().endswith(".exe") else args.name
+    cmd[cmd.index("--name") + 1] = base
     subprocess.run(cmd, cwd=root, check=True)
-    out = artifact_path(dist, args.name)
+    out = artifact_path(dist, base)
     if not out.is_file():
         raise SystemExit(f"Expected build output missing: {out}")
     print(f"Built {out}")

@@ -550,6 +550,11 @@ function closeCommentEditor() {
   state.commentEditor = null;
 }
 
+function isCommentEditorActive() {
+  return Boolean(commentEditorTa && commentEditorEl && !commentEditorEl.hidden
+    && document.activeElement === commentEditorTa);
+}
+
 function editorValueFor(ann) {
   if (
     state.pendingNote?.id === ann.id
@@ -620,7 +625,7 @@ function syncCommentEditor() {
       quote: excerptFor({ page: state.draft.pageIndex, rects: state.draft.rects }),
       value: state.draft.ta?.value ?? "",
       placeholder: "Write your comment…",
-      foot: "Saves when you type · Esc cancels · click outside dismisses",
+      foot: "↵ save · Esc cancels · click outside dismisses",
       onInput: autosizeCommentEditorTa,
       onKeydown: onDraftEditorKeydown,
     });
@@ -702,9 +707,6 @@ function onDraftEditorKeydown(ev) {
 
 commentEditorTa?.addEventListener("input", () => {
   autosizeCommentEditorTa();
-  if (state.draft && !state.draft.committed && trimText(commentEditorTa.value)) {
-    void onDraftEditorInputSave();
-  }
 });
 
 commentEditorBackdropEl?.addEventListener("mousedown", (ev) => {
@@ -2039,8 +2041,11 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
   }));
   applyAnnotationUpdate(updated);
   renderHighlights(updated.page);
-  await refreshPageBitmap(updated.page);
-  renderCommentsPane();
+  const editingThis = quiet && state.focusId === id && isCommentEditorActive();
+  if (!editingThis) {
+    await refreshPageBitmap(updated.page);
+    renderCommentsPane();
+  }
   emergencyBackup();
   updateDocMeta();
   if (!quiet) toast("Saved");
@@ -2339,7 +2344,11 @@ function mergeAnnotationsFromServer(list) {
   }
 
   renderAllHighlights();
-  renderCommentsPane();
+  if (!isCommentEditorActive()) {
+    renderCommentsPane();
+  } else {
+    updateCommentSelectionUi();
+  }
   emergencyBackup();
   void refreshLoadedPageBitmaps();
 }

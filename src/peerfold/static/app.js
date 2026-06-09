@@ -444,9 +444,7 @@ function clearDraft() {
 
 function syncDraftTextFromEditor() {
   if (!state.draft || state.draft.committed) return;
-  if (commentEditorTa && !commentEditorEl?.hidden) {
-    state.draft.text = commentEditorTa.value;
-  }
+  if (commentEditorTa) state.draft.text = commentEditorTa.value;
 }
 
 function draftText() {
@@ -473,8 +471,9 @@ document.addEventListener("click", (e) => {
   if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) hideCtx();
   if (!state.draft || state.draft.committed) return;
   if (e.target.closest("#comment-editor")) return;
-  if (e.target.closest(".comment-card.draft")) return;
+  if (e.target.closest(".comment-card")) return;
   if (e.target.closest("#viewer")) return;
+  if (e.target.closest("#comments-pane")) return;
   syncDraftTextFromEditor();
   if (draftText()) void settleDraft();
   else clearDraft();
@@ -827,13 +826,14 @@ function unbindCommentEditorReposition() {
 
 function closeCommentEditor() {
   if (!commentEditorEl || commentEditorEl.hidden) return;
+  if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   unbindCommentEditorReposition();
   commentEditorEl.hidden = true;
   commentEditorEl.setAttribute("aria-hidden", "true");
   for (const card of document.querySelectorAll(".comment-card.editor-open")) {
     card.classList.remove("editor-open");
   }
-  if (commentEditorTa) {
+  if (commentEditorTa && !(state.draft && !state.draft.committed)) {
     commentEditorTa.value = "";
     commentEditorTa.style.height = "";
   }
@@ -858,6 +858,7 @@ function editorValueFor(ann) {
 
 function openCommentEditor({ mode, anchorCard, color, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
   if (!commentEditorEl || !commentEditorTa) return;
+  if (mode === "draft") syncDraftTextFromEditor();
   const editorKey = mode === "draft" ? "draft" : String(state.focusId ?? title);
   const same = state.commentEditor?.mode === mode && state.commentEditor?.key === editorKey;
   const keepTyping = same && document.activeElement === commentEditorTa;
@@ -903,9 +904,10 @@ function openCommentEditor({ mode, anchorCard, color, title, meta, quote, value,
 
 function syncCommentEditor() {
   if (state.draft && !state.draft.committed) {
-    const card = commentsListEl.querySelector(".comment-card.draft");
+    syncDraftTextFromEditor();
+    let card = commentsListEl.querySelector(".comment-card.draft");
     if (!card) {
-      closeCommentEditor();
+      renderCommentsPane();
       return;
     }
     const ta = openCommentEditor({
@@ -1753,6 +1755,7 @@ function buildDraftCard() {
 
   card.addEventListener("click", (ev) => {
     ev.stopPropagation();
+    syncDraftTextFromEditor();
     syncCommentEditor();
     commentEditorTa?.focus();
   });
@@ -1869,9 +1872,10 @@ function renderCommentsPane() {
   syncDraftTextFromEditor();
   const keepFocus = state.focusId;
   const draftOpen = state.draft && !state.draft.committed;
-  if (draftOpen && isCommentEditorActive() && commentsListEl.querySelector(".comment-card.draft")) {
+  if (draftOpen && commentsListEl.querySelector(".comment-card.draft")) {
     commentsCountEl.textContent = String(state.annotations.size);
     updateCommentSelectionUi();
+    if (commentEditorEl?.hidden) syncCommentEditor();
     return;
   }
   state.pendingNote = null;
@@ -2858,6 +2862,7 @@ function routeDraftTyping(ev) {
   if (ev.key === "Escape") return false;
   if (ev.key.length !== 1 && ev.key !== "Backspace" && ev.key !== "Enter") return false;
   ev.preventDefault();
+  syncDraftTextFromEditor();
   syncCommentEditor();
   ta.focus();
   const start = ta.selectionStart ?? ta.value.length;

@@ -24,8 +24,11 @@ def open_webview(url: str, title: str) -> None:
         width=1440,
         height=900,
         min_size=(720, 480),
+        background_color="#0c0c0e",
+        text_select=True,
     )
-    webview.start()
+    # Native WebKit / WebView2 window — no URL bar or browser chrome (unlike --browser).
+    webview.start(debug=False)
 
 
 def open_webview_or_browser(url: str, title: str) -> str:

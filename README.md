@@ -1,6 +1,6 @@
 # PeerFold
 
-Review PDFs in a native window (or your browser with `--browser`). Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
+Review PDFs in a native window — embedded WebKit/WebView2 via [pywebview](https://pywebview.flowrl.com/), no browser tabs or URL bar. Use `--browser` for the system browser instead. Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
 
 Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 

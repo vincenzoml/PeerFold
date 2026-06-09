@@ -43,8 +43,6 @@ def main() -> None:
         mode = "none"
     elif args.browser:
         mode = "browser"
-    elif getattr(sys, "frozen", False):
-        mode = "browser"
     else:
         mode = "webview"
 

@@ -28,6 +28,10 @@ def pyinstaller_extras() -> list[str]:
         "fitz",
         "--collect-submodules",
         "fitz",
+        "--hidden-import",
+        "webview",
+        "--collect-submodules",
+        "webview",
     ]
 
 

@@ -1,3 +1,6 @@
+const SPAN_PICK_MAX_DIST = 14;
+let draftSaveTimer = null;
+
 const state = {
   doc: null,
   color: "yellow",
@@ -185,6 +188,8 @@ function clearPreviewLayers() {
 }
 
 function clearDraft() {
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
   clearPreviewLayers();
   state.draft = null;
   closeCommentEditor();
@@ -192,8 +197,24 @@ function clearDraft() {
   renderCommentsPane();
 }
 
-function cancelDraft() {
-  clearDraft();
+function draftText() {
+  return trimText(commentEditorTa?.value ?? state.draft?.ta?.value ?? "");
+}
+
+async function settleDraft() {
+  if (!state.draft || state.draft.committed) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  if (draftText()) await onDraftEditorInputSave();
+  else clearDraft();
+}
+
+function settleDraftSync() {
+  if (!state.draft || state.draft.committed) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  if (draftText()) void onDraftEditorInputSave();
+  else clearDraft();
 }
 
 document.addEventListener("click", (e) => {
@@ -203,7 +224,7 @@ document.addEventListener("click", (e) => {
     if (e.target.closest(".comment-card.draft")) return;
     if (e.target.closest("#viewer")) return;
     if (Date.now() < (state.draft.dismissGuardUntil ?? 0)) return;
-    cancelDraft();
+    clearDraft();
   }
 });
 
@@ -378,6 +399,7 @@ function spanIdAtClient(meta, pageIndex, clientX, clientY) {
       nearestId = sp.id;
     }
   }
+  if (nearestDist > SPAN_PICK_MAX_DIST * SPAN_PICK_MAX_DIST) return null;
   return nearestId;
 }
 
@@ -625,7 +647,7 @@ function syncCommentEditor() {
       quote: excerptFor({ page: state.draft.pageIndex, rects: state.draft.rects }),
       value: state.draft.ta?.value ?? "",
       placeholder: "Write your comment…",
-      foot: "↵ save · Esc cancels · click outside dismisses",
+      foot: "Autosaves as you type · Esc saves · Shift+↵ new line",
       onInput: autosizeCommentEditorTa,
       onKeydown: onDraftEditorKeydown,
     });
@@ -650,7 +672,7 @@ function syncCommentEditor() {
       quote: excerptFor(ann),
       value: editorValueFor(ann),
       placeholder: trimText(ann.content) ? "Comment" : "Empty — Backspace/Delete removes",
-      foot: "↵ save · Esc close · Shift+↵ new line",
+      foot: "Autosaves as you type · Esc saves · Shift+↵ new line",
       onInput: state.pendingNote?.onInput,
       onKeydown: state.pendingNote?.onKeydown,
     });
@@ -681,7 +703,14 @@ async function onDraftEditorInputSave() {
     await refreshPageBitmap(page);
     syncDocFlags(await api("/api/document"));
     emergencyBackup();
-    focusAnnotation(created.id, { center: true, edit: true, scrollCard: true });
+    const caret = commentEditorTa.selectionStart;
+    focusAnnotation(created.id, { center: false, edit: true, scrollCard: false, behavior: "auto" });
+    requestAnimationFrame(() => {
+      if (!commentEditorTa) return;
+      commentEditorTa.focus();
+      const end = commentEditorTa.value.length;
+      commentEditorTa.setSelectionRange(Math.min(caret, end), Math.min(caret, end));
+    });
   } catch (err) {
     state.draft.committed = false;
     toast(err.message || "Could not save highlight");
@@ -691,29 +720,27 @@ async function onDraftEditorInputSave() {
 function onDraftEditorKeydown(ev) {
   if (ev.key === "Escape") {
     ev.preventDefault();
-    cancelDraft();
-    return;
-  }
-  if ((ev.key === "Backspace" || ev.key === "Delete") && trimText(commentEditorTa.value) === "") {
-    ev.preventDefault();
-    cancelDraft();
-    return;
-  }
-  if (ev.key === "Enter" && !ev.shiftKey && trimText(commentEditorTa.value)) {
-    ev.preventDefault();
-    void onDraftEditorInputSave();
+    clearTimeout(draftSaveTimer);
+    draftSaveTimer = null;
+    if (draftText()) void onDraftEditorInputSave();
+    else clearDraft();
   }
 }
 
 commentEditorTa?.addEventListener("input", () => {
   autosizeCommentEditorTa();
+  if (!state.draft || state.draft.committed || !draftText()) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = setTimeout(() => {
+    draftSaveTimer = null;
+    void onDraftEditorInputSave();
+  }, 400);
 });
 
 commentEditorBackdropEl?.addEventListener("mousedown", (ev) => {
   ev.preventDefault();
   if (state.draft && !state.draft.committed) {
-    if (trimText(commentEditorTa?.value)) void onDraftEditorInputSave();
-    else cancelDraft();
+    void settleDraft();
     return;
   }
   void dismissComment();
@@ -1549,13 +1576,13 @@ function buildCommentCard(ann) {
     }
     if (ev.target.closest(".comment-locate-hit")) {
       ev.stopPropagation();
-      cancelDraft();
+      settleDraftSync();
       void locateAnnotation(ann.id);
       return;
     }
     if (!ev.target.closest(".comment-edit-hit")) return;
     ev.stopPropagation();
-    cancelDraft();
+    settleDraftSync();
     clearCommentSelection();
     focusAnnotation(ann.id, { edit: true });
   });
@@ -1744,7 +1771,7 @@ function flashHighlight(id) {
 
 async function locateAnnotation(id, { behavior = "smooth" } = {}) {
   if (state.pendingNote) await blurComment();
-  if (state.draft && !state.draft.committed) cancelDraft();
+  await settleDraft();
   state.focusId = null;
   state.locateId = id;
   const ann = state.annotations.get(id);
@@ -1778,7 +1805,7 @@ function focusAnnotation(id, {
     void locateAnnotation(id, { behavior });
     return;
   }
-  if (state.draft && !state.draft.committed) cancelDraft();
+  settleDraftSync();
   state.locateId = null;
   if (toggle && state.focusId === id && state.pendingNote?.id === id) {
     void blurComment();
@@ -1839,11 +1866,6 @@ function wireNoteEditing(ann, cardEl) {
   };
 
   const onKeydown = (ev) => {
-    if (ev.key === "Enter" && !ev.shiftKey) {
-      ev.preventDefault();
-      flush().then(() => blurComment());
-      return;
-    }
     if (ev.key === "Escape") {
       ev.preventDefault();
       flush().finally(() => blurComment());
@@ -2145,7 +2167,7 @@ function openCtx(ev, ann) {
   ev.preventDefault();
   ev.stopPropagation();
   hideCtx();
-  cancelDraft();
+  settleDraftSync();
   focusAnnotation(ann.id, { center: false, scrollCard: false, behavior: "auto" });
 
   const items = contextMenuItems(ann);
@@ -2228,7 +2250,7 @@ function finishHighlightGesture() {
   state.selecting = false;
   setSelectingUi(false);
   if (!gesture.moved) {
-    cancelDraft();
+    settleDraftSync();
     focusAnnotation(gesture.annId, {
       center: true,
       edit: true,
@@ -2250,7 +2272,7 @@ function wireSelection(pageIndex, meta) {
     if (anchorId == null) return;
     ev.preventDefault();
     clearNativeSelection();
-    cancelDraft();
+    settleDraftSync();
     void blurComment();
     state.focusId = null;
     hideCtx();
@@ -2274,7 +2296,7 @@ function bindGlobalSelectionHandlers() {
         gesture.moved = true;
         state.selecting = true;
         setSelectingUi(true, gesture.meta.pageEl);
-        cancelDraft();
+        settleDraftSync();
         void blurComment();
         state.focusId = null;
       }
@@ -2651,7 +2673,7 @@ async function init() {
       }
       if (state.draft && !state.draft.committed) {
         ev.preventDefault();
-        cancelDraft();
+        void settleDraft();
       }
       return;
     }

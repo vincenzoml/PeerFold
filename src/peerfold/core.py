@@ -283,6 +283,23 @@ def annotated_path(source: Path, reviewer: str, stamp: str | None = None) -> Pat
     return source.with_name(f"{source.stem}_{reviewer}-{day}{source.suffix}")
 
 
+def save_copy_enabled() -> bool:
+    """When false (default), annotations are written to the source PDF in place."""
+    raw = os.environ.get("PEERFOLD_SAVE_COPY", "").strip().lower()
+    return raw in ("1", "true", "yes", "on")
+
+
+def session_paths(source: Path, reviewer: str) -> tuple[Path, Path]:
+    """Return (open_path, save_path) for a review session."""
+    source = source.resolve()
+    if not save_copy_enabled():
+        return source, source
+    open_path = latest_review_for(source, reviewer) or source
+    if open_path != source:
+        return open_path, open_path
+    return source, annotated_path(source, reviewer)
+
+
 def parse_review_file(path: Path, source_stem: str) -> dict[str, Any] | None:
     m = REVIEW_FILE_RE.match(path.name)
     if not m or m.group("stem") != source_stem:
@@ -370,8 +387,7 @@ class PdfSession:
         self._file_mtime = 0.0
         data_dir()
         backup_dir()
-        open_path = latest_review_for(self.source, self.reviewer) or self.source
-        self.save_path = open_path if open_path != self.source else annotated_path(self.source, self.reviewer)
+        open_path, self.save_path = session_paths(self.source, self.reviewer)
         self.doc = fitz_mod.open(str(open_path))
         self._file_mtime = self._disk_mtime()
         self._citation_entries: list[tuple[int, int, float]] = []
@@ -604,7 +620,6 @@ class PdfSession:
 
     def document_info(self) -> dict[str, Any]:
         with self.lock:
-            reviews = scan_reviews(self.source)
             scale = self.dpi / 72.0
             page_sizes: list[dict[str, float]] = []
             for pno in range(self.doc.page_count):
@@ -613,13 +628,14 @@ class PdfSession:
             return {
                 "source": str(self.source),
                 "save_path": str(self.save_path),
+                "save_copy": save_copy_enabled(),
                 "name": self.source.name,
                 "pages": self.doc.page_count,
                 "render_scale": scale,
                 "page_sizes": page_sizes,
                 "reviewer": self.reviewer,
-                "reviewers": reviewers_for_source(self.source),
-                "reviews": reviews,
+                "reviewers": reviewers_for_source(self.source) if save_copy_enabled() else [self.reviewer],
+                "reviews": scan_reviews(self.source) if save_copy_enabled() else [],
                 "palette": {k: rgb_to_hex(v) for k, v in PALETTE.items()},
                 "autosave": self.autosave,
                 "unsaved": self.unsaved,
@@ -920,11 +936,12 @@ class PdfSession:
             if self.unsaved and not self.autosave:
                 self._persist_now()
             self.reviewer = reviewer
-            latest = latest_review_for(self.source, reviewer)
-            if latest:
-                self._reload_doc(latest)
-            else:
-                self._reload_doc(self.source, save_path=annotated_path(self.source, reviewer))
+            if save_copy_enabled():
+                latest = latest_review_for(self.source, reviewer)
+                if latest:
+                    self._reload_doc(latest)
+                else:
+                    self._reload_doc(self.source, save_path=annotated_path(self.source, reviewer))
 
     def set_autosave(self, enabled: bool) -> None:
         with self.lock:
@@ -973,6 +990,7 @@ class ServerSession:
             "open": False,
             "source": "",
             "save_path": "",
+            "save_copy": save_copy_enabled(),
             "name": "",
             "pages": 0,
             "render_scale": 1.0,
@@ -1435,6 +1453,9 @@ def print_review_target(session: ServerSession) -> None:
     save = info.get("save_path") or ""
     source = info.get("source") or ""
     if not save:
+        return
+    if not info.get("save_copy") or Path(save).resolve() == Path(source).resolve():
+        print(f"Editing: {save}")
         return
     print(f"Review copy: {save}")
     if source and Path(save).resolve().parent == Path(source).resolve().parent:

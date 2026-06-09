@@ -57,7 +57,7 @@ peerfold paper.pdf --web            # system browser (SSH)
 peerfold paper.pdf --no-browser     # server only
 ```
 
-Environment: `PEERFOLD_REVIEWER` sets the default reviewer name.
+Environment: `PEERFOLD_REVIEWER` sets the default reviewer name. Set `PEERFOLD_SAVE_COPY=1` to write sidecar files (`paper_VC-2026-06-09.pdf`) instead of editing in place.
 
 ## Development
 

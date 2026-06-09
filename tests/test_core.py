@@ -1,3 +1,4 @@
+from datetime import date
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from peerfold.core import (
     parse_version_parts,
     pick_cite_for_click,
     sanitize_reviewer,
+    save_copy_enabled,
+    session_paths,
     static_root,
     version_newer,
 )
@@ -55,6 +58,28 @@ def test_annotated_path_beside_source():
     out = annotated_path(src, "VC", stamp="2026-06-09")
     assert out.parent == src.parent
     assert out.name == "paper_VC-2026-06-09.pdf"
+
+
+def test_save_copy_disabled_by_default(monkeypatch):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    assert not save_copy_enabled()
+
+
+def test_session_paths_in_place(monkeypatch, tmp_path):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    source = tmp_path / "paper.pdf"
+    source.write_bytes(b"x")
+    open_path, save_path = session_paths(source, "VC")
+    assert open_path == save_path == source.resolve()
+
+
+def test_session_paths_sidecar_when_enabled(monkeypatch, tmp_path):
+    monkeypatch.setenv("PEERFOLD_SAVE_COPY", "1")
+    source = tmp_path / "paper.pdf"
+    source.write_bytes(b"x")
+    open_path, save_path = session_paths(source, "VC")
+    assert open_path == source.resolve()
+    assert save_path.name == "paper_VC-" + date.today().isoformat() + ".pdf"
 
 
 def test_static_root_exists():

@@ -183,7 +183,7 @@ function showWelcomeScreen() {
       <p class="welcome-lead">Highlight text, write comments, export a copy with standard PDF annotations.</p>
       <div class="welcome-dropzone">
         <p class="welcome-drop-label">Drop PDF here</p>
-        <p class="welcome-drop-sub">Review file saves beside the original</p>
+        <p class="welcome-drop-sub">Annotations save into the PDF</p>
         <span class="welcome-or">or</span>
         <button type="button" class="btn primary welcome-open" data-welcome-open>Open PDF…</button>
         <p class="welcome-shortcut"><kbd>⌘O</kbd></p>
@@ -278,15 +278,19 @@ async function applyOpenDocument(doc) {
   initPageViewport();
   scheduleStubSync();
   seedViewerNavHistory();
-  const saveName = basename(doc.save_path);
-  const srcName = basename(doc.source || doc.name);
-  const sameFolder = dirname(doc.save_path) === dirname(doc.source || doc.save_path);
-  toast(
-    sameFolder
-      ? `Saving as ${saveName} beside ${srcName}`
-      : `Saving as ${saveName} in ${dirname(doc.save_path)}`,
-    4500,
-  );
+  if (editingInPlace(doc)) {
+    toast(`Editing ${basename(doc.source || doc.name)}`, 3200);
+  } else {
+    const saveName = basename(doc.save_path);
+    const srcName = basename(doc.source || doc.name);
+    const sameFolder = dirname(doc.save_path) === dirname(doc.source || doc.save_path);
+    toast(
+      sameFolder
+        ? `Saving as ${saveName} beside ${srcName}`
+        : `Saving as ${saveName} in ${dirname(doc.save_path)}`,
+      4500,
+    );
+  }
 }
 
 async function bootViewer() {
@@ -381,6 +385,10 @@ function dirname(p) {
   const parts = (p || "").split(/[/\\]/);
   parts.pop();
   return parts.join("/") || ".";
+}
+
+function editingInPlace(doc = state.doc) {
+  return doc && (doc.save_copy === false || doc.save_path === doc.source);
 }
 
 function trimText(s) {
@@ -483,18 +491,22 @@ function updateDocMeta() {
   if (!state.doc) return;
   const metaEl = $("#doc-meta");
   if (!state.doc.open) {
-    metaEl.textContent = "No PDF open · Open… keeps the review copy beside the original";
+    metaEl.textContent = "No PDF open";
     metaEl.title = "";
     return;
   }
   const unsaved = hasUnsavedChanges() ? " · unsaved" : "";
   const mode = state.autosave ? "" : " · manual save";
-  const saveName = basename(state.doc.save_path);
-  const srcName = basename(state.doc.source || state.doc.name);
-  const sameFolder = dirname(state.doc.save_path) === dirname(state.doc.source || state.doc.save_path);
-  metaEl.textContent = sameFolder
-    ? `${state.doc.pages} p · ${saveName} beside ${srcName}${mode}${unsaved}`
-    : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${mode}${unsaved}`;
+  if (editingInPlace()) {
+    metaEl.textContent = `${state.doc.pages} p · ${basename(state.doc.source || state.doc.name)}${mode}${unsaved}`;
+  } else {
+    const saveName = basename(state.doc.save_path);
+    const srcName = basename(state.doc.source || state.doc.name);
+    const sameFolder = dirname(state.doc.save_path) === dirname(state.doc.source || state.doc.save_path);
+    metaEl.textContent = sameFolder
+      ? `${state.doc.pages} p · ${saveName} beside ${srcName}${mode}${unsaved}`
+      : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${mode}${unsaved}`;
+  }
   metaEl.title = state.doc.save_path;
 }
 
@@ -2674,7 +2686,7 @@ async function switchReviewer(name) {
   await reloadAnnotations();
   scheduleStubSync();
   seedViewerNavHistory();
-  toast(`Opened ${basename(doc.save_path)}`);
+  toast(editingInPlace(doc) ? `Reviewer: ${doc.reviewer}` : `Opened ${basename(doc.save_path)}`);
 }
 
 function resetPageViewport() {

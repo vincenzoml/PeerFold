@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
-  <meta name="description" content="PeerFold — review scientific PDFs in your browser. Click, type, open references. One tool for peer review.">
+  <meta name="description" content="PeerFold — review PDFs in a native window. Standard highlight annotations for peer review.">
   <title>PeerFold</title>
   <style>
     :root {
@@ -35,11 +35,11 @@
       min-height: 100vh;
     }
     .wrap {
-      max-width: 920px;
+      max-width: 720px;
       margin: 0 auto;
-      padding: 4rem 1.5rem 6rem;
+      padding: 3.5rem 1.25rem 5rem;
     }
-    header { margin-bottom: 3rem; }
+    header { margin-bottom: 2.5rem; }
     .mark {
       display: inline-block;
       width: 10px;
@@ -50,86 +50,72 @@
       vertical-align: middle;
     }
     h1 {
-      font-size: clamp(2rem, 5vw, 2.75rem);
+      font-size: clamp(2rem, 5vw, 2.5rem);
       font-weight: 650;
       letter-spacing: -0.03em;
-      line-height: 1.15;
     }
     .tagline {
-      margin-top: 0.75rem;
-      font-size: 1.125rem;
+      margin-top: 0.6rem;
+      font-size: 1.05rem;
       color: var(--muted);
-      max-width: 38em;
+      max-width: 34em;
     }
     .shot {
-      margin: 2.5rem 0;
+      margin: 2rem 0 2.5rem;
       border: 1px solid var(--border);
       border-radius: 12px;
       overflow: hidden;
       background: var(--card);
-      box-shadow: 0 24px 80px rgba(0,0,0,.35);
     }
-    .shot img {
-      display: block;
-      width: 100%;
-      height: auto;
+    .shot img { display: block; width: 100%; height: auto; }
+    h2 {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--muted);
+      margin: 2.25rem 0 0.85rem;
+      font-weight: 600;
     }
-    .install {
-      display: grid;
-      gap: 1rem;
-      margin: 1.5rem 0 2.5rem;
+    h2:first-of-type { margin-top: 0; }
+    p, .hint {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin: 0.5rem 0;
     }
+    p strong, .hint strong { color: var(--fg); font-weight: 600; }
     .cmd {
       font-family: var(--mono);
-      font-size: 0.9rem;
+      font-size: 0.85rem;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 1rem 1.25rem;
+      padding: 0.85rem 1rem;
       overflow-x: auto;
+      margin: 0.5rem 0;
+      white-space: pre-wrap;
+      word-break: break-all;
     }
     .cmd span { color: var(--muted); user-select: none; }
-    h2 {
-      font-size: 0.75rem;
+    .or {
+      font-size: 0.8rem;
+      color: var(--muted);
+      margin: 0.75rem 0 0.35rem;
       text-transform: uppercase;
-      letter-spacing: 0.12em;
-      color: var(--muted);
-      margin: 2.5rem 0 1rem;
-      font-weight: 600;
+      letter-spacing: 0.08em;
     }
-    h3 {
-      font-size: 1.05rem;
-      font-weight: 600;
-      margin: 1.75rem 0 0.5rem;
-    }
-    h3:first-of-type { margin-top: 0; }
-    .hint {
-      color: var(--muted);
-      font-size: 0.95rem;
-      margin: 0.5rem 0 0.75rem;
-    }
-    ol.steps {
-      margin: 0.75rem 0 0;
-      padding-left: 1.25rem;
-      color: var(--muted);
-      font-size: 0.95rem;
-    }
-    ol.steps li + li { margin-top: 0.35rem; }
-    ol.steps strong { color: var(--fg); font-weight: 600; }
-    .platform-block {
-      margin-bottom: 2rem;
-      padding-bottom: 2rem;
-      border-bottom: 1px solid var(--border);
-    }
-    .platform-block:last-child {
-      margin-bottom: 0;
-      padding-bottom: 0;
-      border-bottom: 0;
+    a {
+      color: var(--fg);
+      text-underline-offset: 2px;
     }
     ul.features {
       list-style: none;
       display: grid;
-      gap: 0.65rem;
+      gap: 0.5rem;
+      margin-top: 0.5rem;
+    }
+    ul.features li {
+      color: var(--muted);
+      font-size: 0.95rem;
     }
     ul.features li::before {
       content: "—";
@@ -140,72 +126,64 @@
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
-      margin-top: 3rem;
-      padding-top: 2rem;
+      margin-top: 2.5rem;
+      padding-top: 1.5rem;
       border-top: 1px solid var(--border);
     }
     .links a {
-      color: var(--fg);
       text-decoration: none;
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       border-bottom: 1px solid var(--border);
       padding-bottom: 2px;
     }
     .links a:hover { border-color: var(--accent); }
-    .platform-block a {
-      color: var(--fg);
-      text-decoration: underline;
-      text-underline-offset: 2px;
-    }
   </style>
 </head>
 <body>
   <div class="wrap">
     <header>
       <h1><span class="mark" aria-hidden="true"></span>PeerFold</h1>
-      <p class="tagline">One task: review a scientific paper. Opens in a native window — no browser tab juggling. Select text, type your comment, move on. Citations open in a popup. Highlights save as standard PDF annotations you can share with authors.</p>
+      <p class="tagline">Review a PDF in a native window. Select text, type a comment, move on. Highlights save as standard annotations — share the exported file with authors.</p>
     </header>
 
     <figure class="shot">
-      <img src="screenshot.png" width="1440" height="900" alt="PeerFold with highlighted text and reviewer comments on a fictional paper">
+      <img src="screenshot.png" width="1440" height="900" alt="PeerFold reviewing a paper with highlights and comments">
     </figure>
 
-    <h2>Install</h2>
+    <h2>Install app</h2>
+    <p><strong>macOS &amp; Linux</strong> — native window, no Python needed.</p>
+    <div class="cmd"><span>$ </span>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</div>
+    <p><strong>Windows</strong></p>
+    <div class="cmd"><span>&gt; </span>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</div>
+    <p class="hint">Over SSH: <code>peerfold paper.pdf --web</code></p>
 
-    <div class="platform-block">
-      <h3>macOS &amp; Linux</h3>
-      <p class="hint">Detects your OS, downloads the latest release, and installs. Opens in a native window by default. Over SSH, use <code>peerfold … --web</code>.</p>
-      <div class="cmd"><span>$ </span>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</div>
-    </div>
+    <h2>Install with pip</h2>
+    <p>Python 3.10+</p>
+    <div class="cmd"><span>$ </span>python3 -m pip install --user peerfold-review
+<span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
 
-    <div class="platform-block">
-      <h3>Windows</h3>
-      <p class="hint">PowerShell — installs to <code>%LOCALAPPDATA%\Programs\PeerFold</code> and adds it to your user PATH.</p>
-      <div class="cmd"><span>&gt; </span>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</div>
-    </div>
+    <h2>Shared folder or git repo</h2>
+    <p>Add one launcher script. It creates <code>.venv-peerfold/</code> locally, installs a <strong>pinned</strong> PyPI version, and runs PeerFold — so co-authors stay on the same build. Commit <code>scripts/peerfold.py</code>; gitignore the venv.</p>
 
-    <div class="platform-block">
-      <h3>Python</h3>
-      <p class="hint">Python 3.10+. Same native window as the standalone app. No pipx required.</p>
-      <div class="install">
-        <div class="cmd"><span>$ </span>python3 -m pip install --user peerfold-review</div>
-        <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
-      </div>
-      <p class="hint" style="margin-top:0.75rem">Or with pipx: <code>pipx install peerfold-review</code>.</p>
-      <p class="hint" style="margin-top:1rem"><strong>Shared paper repo</strong> — drop the launcher into any git repo (add <code>.venv-peerfold/</code> to <code>.gitignore</code>). Version is pinned in the script so co-authors stay in sync; run <code>python3 scripts/peerfold.py --update</code> and commit when upgrading:</p>
-      <div class="cmd"><span>$ </span>mkdir -p scripts &amp;&amp; curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py</div>
-      <div class="cmd"><span>$ </span>python3 scripts/peerfold.py manuscript.pdf --reviewer RB</div>
-      <div class="cmd"><span>$ </span>python3 scripts/peerfold.py --update</div>
-      <p class="hint" style="margin-top:0.75rem">Over SSH: <code>python3 scripts/peerfold.py paper.pdf --web</code> (native window is default when a display is available).</p>
-    </div>
+    <p class="hint"><strong>One-liner</strong> (from your project root):</p>
+    <div class="cmd"><span>$ </span>mkdir -p scripts &amp;&amp; curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py &amp;&amp; echo '.venv-peerfold/' &gt;&gt; .gitignore</div>
 
-    <h2>Built for peer review</h2>
+    <p class="or">Or download</p>
+    <p><a href="peerfold.py">peerfold.py</a> → save as <code>scripts/peerfold.py</code> in your project. Add <code>.venv-peerfold/</code> to <code>.gitignore</code>.</p>
+
+    <p class="hint"><strong>Run</strong></p>
+    <div class="cmd"><span>$ </span>python3 scripts/peerfold.py manuscript.pdf --reviewer RB</div>
+    <p class="hint">No PDF path opens the welcome screen (drag-drop or Open). Over SSH: append <code>--web</code>.</p>
+
+    <p class="hint"><strong>Upgrade</strong> (when a new release is out):</p>
+    <div class="cmd"><span>$ </span>python3 scripts/peerfold.py --update</div>
+    <p class="hint">Then commit <code>scripts/peerfold.py</code> so everyone pulls the new pin.</p>
+
+    <h2>Features</h2>
     <ul class="features">
-      <li>Click and type — select a span, comment immediately, no dialog maze</li>
-      <li>Comments pane stays beside the PDF; jump between notes in one click</li>
-      <li>Numbered citations open DOIs and URLs in a popup window</li>
-      <li>Autosave, undo, multi-tab sync for long review sessions</li>
-      <li>Exports <code>paper_RB-2026-06-09.pdf</code> with Acrobat-compatible highlights</li>
+      <li>Span highlights + comment threads beside the PDF</li>
+      <li>Citations open in a popup; autosave and undo</li>
+      <li>Exports <code>paper_RB-2026-06-09.pdf</code> with Acrobat-compatible marks</li>
     </ul>
 
     <nav class="links">

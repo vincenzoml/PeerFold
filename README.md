@@ -1,6 +1,6 @@
 # PeerFold
 
-Review PDFs in a native window — embedded WebKit/WebView2 via [pywebview](https://pywebview.flowrl.com/), no browser tabs or URL bar. Use `--web` for your system browser (recommended over SSH). Highlights are written as standard PDF `/Highlight` annotations — open the saved copy in Acrobat, Preview, or any PDF reader.
+Review PDFs in a native window. Highlights are standard PDF annotations — open the saved copy in any reader.
 
 Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 
@@ -12,79 +12,52 @@ Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash
 ```
 
-Installs the latest release: macOS → `Applications/PeerFold.app`; Linux → `~/.local/bin/peerfold`.
-
 **Windows** (PowerShell)
 
 ```powershell
 irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex
 ```
 
-Installs to `%LOCALAPPDATA%\Programs\PeerFold` and adds `peerfold` to your user PATH.
-
-**Python 3.10+** (no pipx required)
+**Python 3.10+**
 
 ```bash
 python3 -m pip install --user peerfold-review
 peerfold manuscript.pdf --reviewer RB
 ```
 
-Ensure `~/.local/bin` is on your PATH, or use a virtual environment:
+Over SSH: `peerfold paper.pdf --web`
+
+## Shared folder or git repo
+
+One launcher file — pinned PyPI version, same build for every co-author. Do **not** submodule PeerFold.
+
+**One-liner** (from project root):
 
 ```bash
-python3 -m venv .venv && source .venv/bin/activate
-pip install peerfold-review
-peerfold manuscript.pdf --reviewer RB
+mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore
+python3 scripts/peerfold.py manuscript.pdf --reviewer AB
 ```
 
-With [pipx](https://pipx.pypa.io/) (isolated CLI on PATH):
+**Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) → `scripts/peerfold.py`, add `.venv-peerfold/` to `.gitignore`.
+
+Upgrade when needed:
 
 ```bash
-pipx install peerfold-review
-peerfold manuscript.pdf --reviewer RB
+python3 scripts/peerfold.py --update   # then commit scripts/peerfold.py
 ```
 
-### Sharing with co-authors (same paper repo)
-
-Do **not** submodule PeerFold — it is a published package. Pick one:
-
-1. **One-liner** — each co-author runs `python3 -m pip install --user peerfold-review` once.
-2. **Repo launcher** (recommended for co-authors) — from your paper repo root:
-
-```bash
-mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py
-python3 scripts/peerfold.py review-builds/paper.pdf --reviewer AB
-```
-
-Add `.venv-peerfold/` to `.gitignore`. The launcher pins a PyPI version in `PEERFOLD_VERSION` so everyone on the repo uses the same build. Upgrade deliberately:
-
-```bash
-python3 scripts/peerfold.py --update   # bumps the pin — commit scripts/peerfold.py
-```
-3. **Standalone app** — `curl -fsSL …/install.sh | bash` (macOS/Linux) or the Windows PowerShell installer; no Python needed.
-
-Manual downloads: [GitHub Releases](https://github.com/vincenzoml/PeerFold/releases/latest).
-
-Install scripts: [install.sh](https://vincenzoml.github.io/PeerFold/install.sh) · [install.ps1](https://vincenzoml.github.io/PeerFold/install.ps1)
+Site: [vincenzoml.github.io/PeerFold](https://vincenzoml.github.io/PeerFold/)
 
 ## Usage
 
 ```bash
 peerfold paper.pdf                  # native window (default)
-peerfold paper.pdf -r VC            # reviewer short name (filename + metadata)
-peerfold paper.pdf --port 8765      # fixed port
-peerfold paper.pdf --web            # system browser (use over SSH)
+peerfold paper.pdf -r VC            # reviewer short name
+peerfold paper.pdf --web            # system browser (SSH)
 peerfold paper.pdf --no-browser     # server only
 ```
 
 Environment: `PEERFOLD_REVIEWER` sets the default reviewer name.
-
-## Features
-
-- Span-accurate text highlights with comment threads
-- Citation links open DOIs/URLs directly
-- Multi-tab sync, autosave, reviewer switching
-- Adobe-compatible annotation format
 
 ## Development
 

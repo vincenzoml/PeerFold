@@ -28,7 +28,6 @@ jobs:
           twine upload dist/*
 
   github-release:
-    needs: pypi
     strategy:
       fail-fast: false
       matrix:

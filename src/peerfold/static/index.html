@@ -17,6 +17,7 @@
       </div>
     </div>
     <div class="topbar-actions">
+      <button id="open-pdf-btn" type="button" class="btn" title="Open PDF (⌘O)">Open…</button>
       <label class="reviewer-field">
         <span>Reviewer</span>
         <input id="reviewer" type="text" maxlength="16" spellcheck="false" autocomplete="off"
@@ -50,8 +51,10 @@
       <button id="undo-btn" type="button" class="btn zoom-btn" title="Undo (⌘Z)" disabled aria-label="Undo">↩</button>
       <button id="redo-btn" type="button" class="btn zoom-btn" title="Redo (⌘⇧Z)" disabled aria-label="Redo">↪</button>
     </div>
-    <span class="toolbar-hint muted">Select text · ⌘A comments · ⌘Z undo · pinch or ⌘ scroll to zoom</span>
+    <span class="toolbar-hint muted">Select text to comment · drag a PDF anywhere to open · ⌘O open · ⌘Z undo</span>
   </div>
+
+  <input id="open-pdf-input" type="file" accept=".pdf,application/pdf" hidden>
 
   <div id="workspace" class="workspace">
     <main id="viewer" class="viewer" tabindex="0">

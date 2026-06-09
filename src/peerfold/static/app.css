@@ -365,6 +365,37 @@ body {
   font-size: 14px;
 }
 
+.welcome-screen {
+  margin: 0 auto;
+  max-width: 420px;
+  padding: 4rem 1.5rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.welcome-screen strong {
+  display: block;
+  color: var(--fg);
+  font-size: 1.25rem;
+  margin-bottom: 0.5rem;
+}
+
+.welcome-screen p {
+  margin: 0 0 1.25rem;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.welcome-screen .btn {
+  min-width: 9rem;
+}
+
+.welcome-screen.is-dragover {
+  outline: 2px dashed color-mix(in srgb, var(--accent) 55%, var(--border));
+  outline-offset: 8px;
+  border-radius: var(--radius);
+}
+
 .viewer-error strong {
   display: block;
   margin-bottom: 8px;
@@ -815,16 +846,11 @@ body {
   pointer-events: none;
 }
 
-.comment-editor:not([hidden]) {
-  pointer-events: auto;
-}
-
 .comment-editor-backdrop {
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, var(--bg) 10%, transparent);
-  backdrop-filter: blur(1px) saturate(105%);
-  -webkit-backdrop-filter: blur(1px) saturate(105%);
+  background: color-mix(in srgb, var(--bg) 4%, transparent);
+  pointer-events: none;
   opacity: 0;
 }
 
@@ -833,6 +859,7 @@ body {
 }
 
 .comment-editor-panel {
+  pointer-events: auto;
   position: fixed;
   display: flex;
   flex-direction: column;

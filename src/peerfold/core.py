@@ -261,6 +261,22 @@ def sanitize_reviewer(name: str) -> str:
     return name
 
 
+def default_reviewer() -> str:
+    for key in ("PEERFOLD_REVIEWER", "REVIEW_VIEWER"):
+        if raw := os.environ.get(key, "").strip():
+            try:
+                return sanitize_reviewer(raw)
+            except ValueError:
+                pass
+    import getpass
+
+    raw = getpass.getuser().strip()
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", raw)[:16].strip("._-")
+    if cleaned and REVIEWER_RE.fullmatch(cleaned):
+        return cleaned
+    return "rev"
+
+
 def annotated_path(source: Path, reviewer: str, stamp: str | None = None) -> Path:
     reviewer = sanitize_reviewer(reviewer)
     day = stamp or date.today().isoformat()
@@ -920,51 +936,132 @@ class PdfSession:
             return self._persist_now()
 
 
-class BootstrappingSession:
-    """Load PdfSession in the background so the UI can open immediately."""
+class ServerSession:
+    """Optional PDF session with in-app open/switch support."""
 
-    def __init__(self, source: Path, reviewer: str) -> None:
-        self._source = source
-        self._reviewer = reviewer
+    def __init__(self, reviewer: str, source: Path | None = None) -> None:
+        self._reviewer = sanitize_reviewer(reviewer)
         self._session: PdfSession | None = None
         self._error: BaseException | None = None
         self._ready = threading.Event()
-        threading.Thread(target=self._load, name="peerfold-load", daemon=True).start()
+        self._lock = threading.RLock()
+        if source is None:
+            self._ready.set()
+        else:
+            threading.Thread(
+                target=self._load,
+                args=(source,),
+                name="peerfold-load",
+                daemon=True,
+            ).start()
 
     @property
     def ready(self) -> bool:
-        return self._ready.is_set() and self._error is None
+        return self._ready.is_set()
+
+    @property
+    def has_document(self) -> bool:
+        return self._session is not None
 
     @property
     def loading_error(self) -> str | None:
         return None if self._error is None else str(self._error)
 
-    def _load(self) -> None:
+    def _empty_document_info(self) -> dict[str, Any]:
+        return {
+            "open": False,
+            "source": "",
+            "save_path": "",
+            "name": "",
+            "pages": 0,
+            "render_scale": 1.0,
+            "page_sizes": [],
+            "reviewer": self._reviewer,
+            "reviewers": [],
+            "reviews": [],
+            "palette": {k: rgb_to_hex(v) for k, v in PALETTE.items()},
+            "autosave": True,
+            "unsaved": False,
+            "dirty": False,
+            "file_mtime": 0.0,
+            "revision": 0,
+        }
+
+    def document_info(self) -> dict[str, Any]:
+        with self._lock:
+            if self._session is None:
+                return self._empty_document_info()
+            return {"open": True, **self._session.document_info()}
+
+    def _load(self, source: Path) -> None:
         try:
+            source = source.resolve()
+            if not source.is_file():
+                raise FileNotFoundError(f"PDF not found: {source}")
             fitz = import_fitz()
-            self._session = PdfSession(self._source, self._reviewer, fitz, defer_maintenance=True)
+            session = PdfSession(source, self._reviewer, fitz, defer_maintenance=True)
+            with self._lock:
+                if self._session is not None:
+                    self._session.close()
+                self._session = session
+                self._error = None
         except BaseException as exc:
-            self._error = exc
+            with self._lock:
+                self._error = exc
         finally:
             self._ready.set()
+
+    def open_pdf(self, source: Path) -> dict[str, Any]:
+        with self._lock:
+            if self._session is not None:
+                self._session.close()
+                self._session = None
+            self._error = None
+            self._ready.clear()
+        self._load(source)
+        self._ready.wait()
+        if self._error is not None:
+            raise self._error
+        return self.document_info()
+
+    def set_reviewer(self, reviewer: str) -> None:
+        reviewer = sanitize_reviewer(reviewer)
+        with self._lock:
+            self._reviewer = reviewer
+            if self._session is not None:
+                self._session.set_reviewer(reviewer)
+
+    def set_autosave(self, enabled: bool) -> None:
+        with self._lock:
+            if self._session is not None:
+                self._session.set_autosave(enabled)
+
+    def save(self) -> str:
+        with self._lock:
+            if self._session is None:
+                raise RuntimeError("No PDF open")
+            return self._session.save()
+
+    def close(self) -> None:
+        with self._lock:
+            if self._session is not None:
+                self._session.close()
+                self._session = None
 
     def _require(self) -> PdfSession:
         self._ready.wait()
         if self._error is not None:
             raise self._error
-        assert self._session is not None
+        if self._session is None:
+            raise RuntimeError("No PDF open")
         return self._session
-
-    def close(self) -> None:
-        if self._session is not None:
-            self._session.close()
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._require(), name)
 
 
 class ReviewHandler(BaseHTTPRequestHandler):
-    session: PdfSession | BootstrappingSession
+    session: ServerSession
     fitz_mod: Any
 
     def log_message(self, fmt: str, *args) -> None:
@@ -973,6 +1070,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def _guard_api(self) -> bool:
         session = self.session
         if getattr(session, "ready", True):
+            if session.loading_error:
+                self._json(500, {"error": session.loading_error})
+                return True
             return False
         err = getattr(session, "loading_error", None)
         if err:
@@ -980,6 +1080,43 @@ class ReviewHandler(BaseHTTPRequestHandler):
         else:
             self._json(503, {"status": "loading"})
         return True
+
+    def _guard_document(self) -> bool:
+        if self._guard_api():
+            return True
+        if getattr(self.session, "has_document", True):
+            return False
+        self._json(503, {"status": "no_document"})
+        return True
+
+    def _read_upload_pdf(self) -> Path:
+        import cgi
+
+        content_type = self.headers.get("Content-Type", "")
+        if not content_type.startswith("multipart/form-data"):
+            raise ValueError("expected multipart PDF upload")
+        fs = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={
+                "REQUEST_METHOD": "POST",
+                "CONTENT_TYPE": content_type,
+            },
+        )
+        if "file" not in fs:
+            raise ValueError("missing PDF file")
+        item = fs["file"]
+        if not getattr(item, "file", None):
+            raise ValueError("empty PDF upload")
+        upload_dir = data_dir() / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        raw_name = Path(getattr(item, "filename", "") or "upload.pdf").name
+        if not raw_name.lower().endswith(".pdf"):
+            raw_name = f"{raw_name}.pdf"
+        stamp = time.strftime("%Y%m%d-%H%M%S")
+        dest = upload_dir / f"{stamp}-{raw_name}"
+        dest.write_bytes(item.file.read())
+        return dest
 
     def handle_error(self, request, client_address) -> None:
         exc_type, _, _ = sys.exc_info()
@@ -1039,18 +1176,18 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             return self._json(200, self.session.document_info())
         if path == "/api/sync":
-            if self._guard_api():
+            if self._guard_document():
                 return
             qs = parse_qs(parsed.query)
             since = int(qs.get("since", ["0"])[0] or 0)
             payload = self.session.sync_from_disk(since=since)
             return self._json(200, payload)
         if path == "/api/annotations":
-            if self._guard_api():
+            if self._guard_document():
                 return
             return self._json(200, self.session.list_annotations())
         if path.startswith("/api/page/"):
-            if self._guard_api():
+            if self._guard_document():
                 return
             try:
                 index = int(path.split("/")[-1])
@@ -1067,7 +1204,18 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
-        if path.startswith("/api/") and self._guard_api():
+        if path == "/api/open":
+            if self._guard_api():
+                return
+            try:
+                pdf_path = self._read_upload_pdf()
+                doc = self.session.open_pdf(pdf_path)
+                return self._json(200, doc)
+            except (ValueError, FileNotFoundError) as exc:
+                return self._json(400, {"error": str(exc)})
+            except RuntimeError as exc:
+                return self._json(500, {"error": str(exc)})
+        if path.startswith("/api/") and self._guard_document():
             return
         try:
             if path == "/api/annotations":
@@ -1114,7 +1262,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if not path.startswith("/api/annotations/"):
             self.send_error(404)
             return
-        if self._guard_api():
+        if self._guard_document():
             return
         try:
             xref = int(path.rsplit("/", 1)[-1])
@@ -1138,7 +1286,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if not path.startswith("/api/annotations/"):
             self.send_error(404)
             return
-        if self._guard_api():
+        if self._guard_document():
             return
         try:
             xref = int(path.rsplit("/", 1)[-1])
@@ -1215,38 +1363,43 @@ def update_check_payload() -> dict[str, Any]:
 
 
 def run_server(
-    pdf: Path,
+    pdf: Path | None,
     *,
-    reviewer: str = "rev",
+    reviewer: str | None = None,
     port: int = 0,
     ui: str = "webview",
 ) -> None:
     """Start PeerFold. ui: webview (default), browser, or none."""
     from peerfold.ui import open_url, open_webview_or_browser
 
-    pdf = pdf.resolve()
-    if not pdf.is_file():
-        raise SystemExit(f"PDF not found: {pdf}")
+    if pdf is not None:
+        pdf = pdf.resolve()
+        if not pdf.is_file():
+            raise SystemExit(f"PDF not found: {pdf}")
 
-    reviewer = sanitize_reviewer(reviewer)
-    session = BootstrappingSession(pdf, reviewer)
+    reviewer = sanitize_reviewer(reviewer or default_reviewer())
+    session = ServerSession(reviewer, pdf)
     chosen = pick_port(port)
     url = f"http://127.0.0.1:{chosen}/"
-    title = f"PeerFold · {pdf.name}"
+    title = f"PeerFold · {pdf.name}" if pdf else "PeerFold"
 
     handler = type("BoundReviewHandler", (ReviewHandler,), {})
     handler.session = session
     handler.fitz_mod = None
     server = ThreadingHTTPServer(("127.0.0.1", chosen), handler)
 
-    print(f"PeerFold · {pdf.name}")
+    if pdf:
+        print(f"PeerFold · {pdf.name}")
+    else:
+        print("PeerFold")
     print(f"Open: {url}")
 
     if ui == "none":
         session._ready.wait()
         if session.loading_error:
             raise SystemExit(session.loading_error)
-        print(f"Save copy: {session.save_path}")
+        if pdf:
+            print(f"Save copy: {session.save_path}")
         try:
             server.serve_forever()
         except KeyboardInterrupt:

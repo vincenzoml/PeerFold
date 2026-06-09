@@ -8,6 +8,7 @@ import sys
 from pathlib import Path
 
 from peerfold import __version__
+from peerfold.core import default_reviewer
 
 
 def main() -> None:
@@ -17,12 +18,18 @@ def main() -> None:
         prog="peerfold",
         description="Review PDFs in a native window. Highlights are standard PDF annotations.",
     )
-    ap.add_argument("pdf", type=Path, help="PDF to review")
+    ap.add_argument(
+        "pdf",
+        nargs="?",
+        type=Path,
+        default=None,
+        help="PDF to review (optional — open from the app if omitted)",
+    )
     ap.add_argument(
         "--reviewer",
         "-r",
-        default=os.environ.get("PEERFOLD_REVIEWER", os.environ.get("REVIEW_VIEWER", "rev")),
-        help="Short annotator name (default: $PEERFOLD_REVIEWER or 'rev')",
+        default=os.environ.get("PEERFOLD_REVIEWER", os.environ.get("REVIEW_VIEWER")),
+        help="Short annotator name (default: username or $PEERFOLD_REVIEWER)",
     )
     ap.add_argument("--port", type=int, default=0, help="Local port (default: ephemeral)")
     ui = ap.add_mutually_exclusive_group()
@@ -50,7 +57,7 @@ def main() -> None:
 
     run_server(
         args.pdf,
-        reviewer=args.reviewer,
+        reviewer=args.reviewer or default_reviewer(),
         port=args.port,
         ui=mode,
     )

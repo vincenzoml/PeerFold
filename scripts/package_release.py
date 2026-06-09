@@ -30,22 +30,12 @@ if [[ ! -f "${MARKER}" ]]; then
   touch "${MARKER}"
 fi
 RUN="${ROOT}/${NAME}/${NAME}"
-if [[ $# -eq 0 && "$OSTYPE" == darwin* ]]; then
-  PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
-  [[ -z "${PDF}" ]] && exit 0
-  exec "${RUN}" "${PDF}"
-fi
 exec "${RUN}" "$@"
 """
 
 LAUNCHER = """#!/bin/bash
 DIR="$(cd "$(dirname "$0")/../Resources/runtime" && pwd)"
 RUN="${DIR}/__BINARY__"
-if [[ $# -eq 0 ]]; then
-  PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
-  [[ -z "${PDF}" ]] && exit 0
-  exec "${RUN}" "${PDF}"
-fi
 exec "${RUN}" "$@"
 """
 

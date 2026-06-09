@@ -119,6 +119,8 @@ const commentsPaneEl = $("#comments-pane");
 const commentsCollapseBtnEl = $("#comments-collapse-btn");
 const undoBtnEl = $("#undo-btn");
 const redoBtnEl = $("#redo-btn");
+const openPdfBtnEl = $("#open-pdf-btn");
+const openPdfInputEl = $("#open-pdf-input");
 
 async function api(path, opts = {}) {
   const res = await fetch(path, {
@@ -129,6 +131,11 @@ async function api(path, opts = {}) {
   if (res.status === 503 && data.status === "loading") {
     const err = new Error("loading");
     err.loading = true;
+    throw err;
+  }
+  if (res.status === 503 && data.status === "no_document") {
+    const err = new Error("no_document");
+    err.noDocument = true;
     throw err;
   }
   if (!res.ok) throw new Error(data.error || res.statusText);
@@ -148,13 +155,13 @@ function showBootMessage(msg) {
   pagesEl.appendChild(el);
 }
 
-async function waitForDocument() {
-  showBootMessage("Opening PDF…");
+async function waitForApp() {
   for (let attempt = 0; attempt < 600; attempt += 1) {
     try {
       return await api("/api/document");
     } catch (err) {
       if (err.loading) {
+        showBootMessage("Opening PDF…");
         await sleep(100);
         continue;
       }
@@ -162,6 +169,105 @@ async function waitForDocument() {
     }
   }
   throw new Error("Timed out while opening the PDF");
+}
+
+function showWelcomeScreen() {
+  if (!pagesEl) return;
+  pagesEl.replaceChildren();
+  const el = document.createElement("div");
+  el.className = "welcome-screen";
+  el.innerHTML = `
+    <strong>PeerFold</strong>
+    <p>Open a PDF to review. Drag a file anywhere, or use Open.</p>
+    <button type="button" class="btn primary" data-welcome-open>Open PDF…</button>
+  `;
+  el.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
+    openPdfInputEl?.click();
+  });
+  pagesEl.appendChild(el);
+}
+
+async function openPdfFile(file) {
+  if (!file) return;
+  if (!confirmUnsaved("Open another PDF")) return;
+  await settleDraft();
+  await blurComment();
+  showBootMessage("Opening PDF…");
+  const form = new FormData();
+  form.append("file", file, file.name || "document.pdf");
+  const res = await fetch("/api/open", { method: "POST", body: form });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(data.error || res.statusText);
+  await applyOpenDocument(data);
+  startDiskSync();
+}
+
+async function applyOpenDocument(doc) {
+  clearHistory();
+  state.annotations.clear();
+  state.draft = null;
+  state.pendingNote = null;
+  state.focusId = null;
+  state.locateId = null;
+  closeCommentEditor();
+  clearCommentSelection();
+  await syncDocFlags(doc);
+  $("#doc-name").textContent = doc.open ? doc.name : "PeerFold";
+  reviewerEl.value = doc.reviewer;
+  populateReviewers();
+  buildPalette(doc.palette);
+  updateSaveUi();
+  if (!doc.open) {
+    showWelcomeScreen();
+    renderCommentsPane();
+    return;
+  }
+  resetPageViewport();
+  clearHistory();
+  await reloadAnnotations();
+  initPageViewport();
+  scheduleStubSync();
+  seedViewerNavHistory();
+  toast(`Opened ${doc.name}`, 2200);
+}
+
+async function bootViewer() {
+  resetPageViewport();
+  await reloadAnnotations();
+  initPageViewport();
+  scheduleStubSync();
+  seedViewerNavHistory();
+}
+
+function wireOpenPdf() {
+  const pick = () => openPdfInputEl?.click();
+  openPdfBtnEl?.addEventListener("click", pick);
+  openPdfInputEl?.addEventListener("change", () => {
+    const file = openPdfInputEl.files?.[0];
+    openPdfInputEl.value = "";
+    if (file) void openPdfFile(file).catch((err) => toast(err.message || "Could not open PDF"));
+  });
+
+  const targets = [document.body, workspaceEl, viewerEl].filter(Boolean);
+  for (const el of targets) {
+    el.addEventListener("dragover", (ev) => {
+      if (![...ev.dataTransfer?.types || []].includes("Files")) return;
+      ev.preventDefault();
+      pagesEl?.querySelector(".welcome-screen")?.classList.add("is-dragover");
+    });
+    el.addEventListener("dragleave", () => {
+      pagesEl?.querySelector(".welcome-screen")?.classList.remove("is-dragover");
+    });
+    el.addEventListener("drop", (ev) => {
+      pagesEl?.querySelector(".welcome-screen")?.classList.remove("is-dragover");
+      const file = [...ev.dataTransfer?.files || []].find((f) =>
+        f.type === "application/pdf" || f.name.toLowerCase().endsWith(".pdf"),
+      );
+      if (!file) return;
+      ev.preventDefault();
+      void openPdfFile(file).catch((err) => toast(err.message || "Could not open PDF"));
+    });
+  }
 }
 
 function toast(msg, ms = 2200) {
@@ -287,7 +393,6 @@ document.addEventListener("click", (e) => {
     if (e.target.closest("#comment-editor")) return;
     if (e.target.closest(".comment-card.draft")) return;
     if (e.target.closest("#viewer")) return;
-    if (Date.now() < (state.draft.dismissGuardUntil ?? 0)) return;
     clearDraft();
   }
 });
@@ -296,6 +401,7 @@ document.addEventListener("mousedown", (e) => {
   if (e.target.closest("#comment-editor")) return;
   if (e.target.closest(".comment-card.draft")) return;
   if (e.target.closest(".comment-card:not(.draft)")) return;
+  if (e.target.closest("#viewer")) return;
 
   if (state.pendingNote) {
     const onActiveHighlight = e.target.closest(
@@ -308,6 +414,10 @@ document.addEventListener("mousedown", (e) => {
 
 function updateDocMeta() {
   if (!state.doc) return;
+  if (!state.doc.open) {
+    $("#doc-meta").textContent = "No PDF open · drop a file or click Open";
+    return;
+  }
   const unsaved = hasUnsavedChanges() ? " · unsaved changes" : "";
   const mode = state.autosave ? " · autosave on" : " · manual save";
   $("#doc-meta").textContent =
@@ -799,15 +909,6 @@ commentEditorTa?.addEventListener("input", () => {
     draftSaveTimer = null;
     void onDraftEditorInputSave();
   }, 400);
-});
-
-commentEditorBackdropEl?.addEventListener("mousedown", (ev) => {
-  ev.preventDefault();
-  if (state.draft && !state.draft.committed) {
-    void settleDraft();
-    return;
-  }
-  void dismissComment();
 });
 
 function focusDraftNote() {
@@ -1817,7 +1918,6 @@ function showDraft(pageIndex, spanIds) {
     color: state.color,
     committed: false,
     createdAt: Date.now(),
-    dismissGuardUntil: Date.now() + 400,
   };
   renderDraftOverlay(meta, rects);
   clearNativeSelection();
@@ -1871,10 +1971,6 @@ function focusAnnotation(id, {
   }
   settleDraftSync();
   state.locateId = null;
-  if (toggle && state.focusId === id && state.pendingNote?.id === id) {
-    void blurComment();
-    return;
-  }
   state.focusId = id;
   renderAllHighlights();
   renderCommentsPane();
@@ -2463,6 +2559,10 @@ async function pullServerState({ quiet = false } = {}) {
 
 function startDiskSync() {
   if (state.syncTimer) clearInterval(state.syncTimer);
+  if (!state.doc?.open) {
+    state.syncTimer = null;
+    return;
+  }
   state.syncTimer = setInterval(() => { void pullServerState({ quiet: true }); }, 1000);
 }
 
@@ -2662,10 +2762,11 @@ async function init() {
   if (cleanUrl.searchParams.delete("layout")) {
     history.replaceState(null, "", cleanUrl);
   }
-  state.doc = await waitForDocument();
+  wireOpenPdf();
+  state.doc = await waitForApp();
   state.autosave = state.doc.autosave;
   setServerRevision(state.doc.revision ?? 0);
-  $("#doc-name").textContent = state.doc.name;
+  $("#doc-name").textContent = state.doc.open ? state.doc.name : "PeerFold";
   reviewerEl.value = state.doc.reviewer;
   updateSaveUi();
   populateReviewers();
@@ -2718,6 +2819,11 @@ async function init() {
       ev.preventDefault();
       if (redo) void performRedo();
       else void performUndo();
+      return;
+    }
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "o") {
+      ev.preventDefault();
+      openPdfInputEl?.click();
       return;
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") {
@@ -2785,17 +2891,19 @@ async function init() {
     if (document.visibilityState === "visible") void pullServerState({ quiet: true });
   });
   wireViewerNavHistory();
-  await reloadAnnotations();
-  initPageViewport();
-  scheduleStubSync();
-  seedViewerNavHistory();
+  if (state.doc.open) {
+    await bootViewer();
+  } else {
+    showWelcomeScreen();
+    renderCommentsPane();
+  }
+  startDiskSync();
+  updateUndoRedoUi();
+  void checkForUpdates();
   window.addEventListener("load", () => scheduleStubSync(), { once: true });
   window.addEventListener("pageshow", (ev) => {
     if (ev.persisted) scheduleStubSync();
   });
-  startDiskSync();
-  updateUndoRedoUi();
-  void checkForUpdates();
 }
 
 init().catch((err) => {

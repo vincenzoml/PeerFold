@@ -6,6 +6,7 @@ from peerfold.core import (
     annotated_path,
     build_citation_index,
     cite_numbers_for_link,
+    default_reviewer,
     import_fitz,
     parse_version_parts,
     pick_cite_for_click,
@@ -42,6 +43,15 @@ def test_version_newer():
     assert not version_newer("0.1.11", "0.1.11")
     assert not version_newer("0.1.10", "0.1.11")
     assert parse_version_parts("v0.1.12") == (0, 1, 12)
+
+
+def test_default_reviewer(monkeypatch):
+    import getpass
+
+    monkeypatch.delenv("PEERFOLD_REVIEWER", raising=False)
+    monkeypatch.delenv("REVIEW_VIEWER", raising=False)
+    monkeypatch.setattr(getpass, "getuser", lambda: "vincenzo")
+    assert default_reviewer() == "vincenzo"
 
 
 def test_citation_helpers_on_sample_pdf():

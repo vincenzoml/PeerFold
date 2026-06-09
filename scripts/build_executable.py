@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import shutil
 import subprocess
 import sys
@@ -10,11 +11,24 @@ from importlib.resources import files
 from pathlib import Path
 
 
+def artifact_path(dist: Path, name: str) -> Path:
+    if sys.platform == "win32":
+        return dist / f"{name}.exe"
+    return dist / name
+
+
 def main() -> None:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument(
+        "--name",
+        default="peerfold",
+        help="Output executable base name (e.g. peerfold-macos; .exe added on Windows)",
+    )
+    args = ap.parse_args()
+
     root = Path(__file__).resolve().parents[1]
     static = Path(str(files("peerfold") / "static"))
     if not static.is_dir():
-        # Editable install: static lives in src/
         static = root / "src" / "peerfold" / "static"
     if not static.is_dir():
         raise SystemExit("Cannot locate peerfold/static — install the package first")
@@ -31,7 +45,7 @@ def main() -> None:
         "PyInstaller",
         "--onefile",
         "--name",
-        "peerfold",
+        args.name,
         "--add-data",
         add_data,
         "--hidden-import",
@@ -41,7 +55,10 @@ def main() -> None:
         str(root / "src" / "peerfold" / "cli.py"),
     ]
     subprocess.run(cmd, cwd=root, check=True)
-    print(f"Built {list(dist.glob('peerfold*'))}")
+    out = artifact_path(dist, args.name)
+    if not out.is_file():
+        raise SystemExit(f"Expected build output missing: {out}")
+    print(f"Built {out}")
 
 
 if __name__ == "__main__":

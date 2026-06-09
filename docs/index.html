@@ -77,7 +77,7 @@
     .install {
       display: grid;
       gap: 1rem;
-      margin: 2.5rem 0;
+      margin: 1.5rem 0 2.5rem;
     }
     .cmd {
       font-family: var(--mono);
@@ -97,7 +97,7 @@
       margin: 2.5rem 0 1rem;
       font-weight: 600;
     }
-    ul.features {
+    ul.features, ul.install-list {
       list-style: none;
       display: grid;
       gap: 0.65rem;
@@ -107,7 +107,25 @@
       color: var(--accent);
       margin-right: 0.5rem;
     }
-    .links {
+    .install-list li {
+      padding: 0.85rem 1rem;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+    }
+    .install-list strong {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+    .install-list p {
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .install-list code {
+      font-family: var(--mono);
+      font-size: 0.85em;
+    }
+  .links {
       display: flex;
       flex-wrap: wrap;
       gap: 1rem;
@@ -136,10 +154,42 @@
       <img src="screenshot.png" width="1440" height="900" alt="PeerFold with highlighted text and reviewer comments on a fictional paper">
     </figure>
 
+    <h2>Quick start</h2>
     <div class="install">
       <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
       <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
     </div>
+
+    <h2>Install</h2>
+    <ul class="install-list">
+      <li>
+        <strong>pipx (recommended)</strong>
+        <p>Isolated CLI on your PATH. Requires Python 3.10+.</p>
+        <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
+      </li>
+      <li>
+        <strong>pip</strong>
+        <p>Inside an existing virtual environment.</p>
+        <div class="cmd"><span>$ </span>pip install peerfold-review</div>
+      </li>
+      <li>
+        <strong>macOS — standalone binary</strong>
+        <p>Download <code>peerfold-macos</code> from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then:</p>
+        <div class="cmd"><span>$ </span>chmod +x peerfold-macos</div>
+        <div class="cmd"><span>$ </span>./peerfold-macos manuscript.pdf --reviewer RB</div>
+      </li>
+      <li>
+        <strong>Linux — standalone binary</strong>
+        <p>Download <code>peerfold-linux</code> from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then:</p>
+        <div class="cmd"><span>$ </span>chmod +x peerfold-linux</div>
+        <div class="cmd"><span>$ </span>./peerfold-linux manuscript.pdf --reviewer RB</div>
+      </li>
+      <li>
+        <strong>Windows — standalone binary</strong>
+        <p>Download <code>peerfold-win.exe</code> from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then run from a terminal:</p>
+        <div class="cmd"><span>&gt; </span>peerfold-win.exe manuscript.pdf --reviewer RB</div>
+      </li>
+    </ul>
 
     <h2>Built for peer review</h2>
     <ul class="features">
@@ -150,15 +200,9 @@
       <li>Exports <code>paper_RB-2026-06-09.pdf</code> with Acrobat-compatible highlights</li>
     </ul>
 
-    <h2>Install</h2>
-    <div class="install">
-      <div class="cmd"><span>$ </span>pip install peerfold-review</div>
-      <div class="cmd">or download a standalone binary from Releases</div>
-    </div>
-
     <nav class="links">
       <a href="https://github.com/vincenzoml/PeerFold">GitHub</a>
-      <a href="https://github.com/vincenzoml/PeerFold/releases">Releases</a>
+      <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>
       <a href="https://pypi.org/project/peerfold-review/">PyPI</a>
     </nav>
   </div>

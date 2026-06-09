@@ -3,7 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="color-scheme" content="light dark">
+  <meta name="color-scheme" content="dark">
+  <meta name="theme-color" content="#0c0c0e">
   <meta name="description" content="PeerFold — review PDFs in a native window. Standard highlight annotations for peer review.">
   <title>PeerFold</title>
   <style>
@@ -16,15 +17,6 @@
       --border: #2a2a32;
       --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       --sans: "Inter", system-ui, -apple-system, sans-serif;
-    }
-    @media (prefers-color-scheme: light) {
-      :root {
-        --bg: #fafafa;
-        --fg: #111114;
-        --muted: #6b6b76;
-        --card: #fff;
-        --border: #e4e4ea;
-      }
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -66,6 +58,7 @@
       border-radius: 12px;
       overflow: hidden;
       background: var(--card);
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.35);
     }
     .shot img { display: block; width: 100%; height: auto; }
     h2 {
@@ -83,19 +76,46 @@
       margin: 0.5rem 0;
     }
     p strong, .hint strong { color: var(--fg); font-weight: 600; }
-    .cmd {
+    .copy-cmd {
+      display: block;
+      width: 100%;
+      text-align: left;
       font-family: var(--mono);
       font-size: 0.85rem;
       background: var(--card);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 0.85rem 1rem;
-      overflow-x: auto;
+      padding: 0.85rem 1rem 0.65rem;
       margin: 0.5rem 0;
+      color: var(--fg);
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .copy-cmd:hover {
+      border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+      background: #1a1a1f;
+    }
+    .copy-cmd:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 2px;
+    }
+    .copy-cmd code {
+      display: block;
       white-space: pre-wrap;
       word-break: break-all;
+      font: inherit;
+      color: inherit;
     }
-    .cmd span { color: var(--muted); user-select: none; }
+    .copy-label {
+      display: block;
+      margin-top: 0.55rem;
+      font-family: var(--sans);
+      font-size: 0.72rem;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
+    }
+    .copy-cmd.is-copied .copy-label { color: var(--accent); }
     .or {
       font-size: 0.8rem;
       color: var(--muted);
@@ -106,6 +126,10 @@
     a {
       color: var(--fg);
       text-underline-offset: 2px;
+    }
+    code {
+      font-family: var(--mono);
+      font-size: 0.88em;
     }
     ul.features {
       list-style: none;
@@ -152,38 +176,56 @@
 
     <h2>Install app</h2>
     <p><strong>macOS &amp; Linux</strong> — native window, no Python needed.</p>
-    <div class="cmd"><span>$ </span>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</div>
+    <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
+      <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
     <p><strong>Windows</strong></p>
-    <div class="cmd"><span>&gt; </span>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</div>
+    <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
+      <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
     <p class="hint">Over SSH: <code>peerfold paper.pdf --web</code></p>
 
     <h2>Install with pip</h2>
     <p>Python 3.10+</p>
-    <div class="cmd"><span>$ </span>python3 -m pip install --user peerfold-review
-<span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
+    <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold manuscript.pdf --reviewer RB">
+      <code>python3 -m pip install --user peerfold-review
+peerfold manuscript.pdf --reviewer RB</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
 
     <h2>Shared folder or git repo</h2>
     <p>Add one launcher script. It creates <code>.venv-peerfold/</code> locally, installs a <strong>pinned</strong> PyPI version, and runs PeerFold — so co-authors stay on the same build. Commit <code>scripts/peerfold.py</code>; gitignore the venv.</p>
 
     <p class="hint"><strong>One-liner</strong> (from your project root):</p>
-    <div class="cmd"><span>$ </span>mkdir -p scripts &amp;&amp; curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py &amp;&amp; echo '.venv-peerfold/' &gt;&gt; .gitignore</div>
+    <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
+      <code>mkdir -p scripts &amp;&amp; curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py &amp;&amp; echo '.venv-peerfold/' &gt;&gt; .gitignore</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
 
     <p class="or">Or download</p>
     <p><a href="peerfold.py">peerfold.py</a> → save as <code>scripts/peerfold.py</code> in your project. Add <code>.venv-peerfold/</code> to <code>.gitignore</code>.</p>
 
     <p class="hint"><strong>Run</strong></p>
-    <div class="cmd"><span>$ </span>python3 scripts/peerfold.py manuscript.pdf --reviewer RB</div>
+    <button type="button" class="copy-cmd" data-copy="python3 scripts/peerfold.py manuscript.pdf --reviewer RB">
+      <code>python3 scripts/peerfold.py manuscript.pdf --reviewer RB</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
     <p class="hint">No PDF path opens the welcome screen (drag-drop or Open). Over SSH: append <code>--web</code>.</p>
 
     <p class="hint"><strong>Upgrade</strong> (when a new release is out):</p>
-    <div class="cmd"><span>$ </span>python3 scripts/peerfold.py --update</div>
+    <button type="button" class="copy-cmd" data-copy="python3 scripts/peerfold.py --update">
+      <code>python3 scripts/peerfold.py --update</code>
+      <span class="copy-label">Click to copy</span>
+    </button>
     <p class="hint">Then commit <code>scripts/peerfold.py</code> so everyone pulls the new pin.</p>
 
     <h2>Features</h2>
     <ul class="features">
       <li>Span highlights + comment threads beside the PDF</li>
       <li>Citations open in a popup; autosave and undo</li>
-      <li>Exports <code>paper_RB-2026-06-09.pdf</code> with Acrobat-compatible marks</li>
+      <li>Edits the PDF in place — standard Acrobat-compatible marks</li>
     </ul>
 
     <nav class="links">
@@ -192,5 +234,24 @@
       <a href="https://pypi.org/project/peerfold-review/">PyPI</a>
     </nav>
   </div>
+  <script>
+    for (const btn of document.querySelectorAll(".copy-cmd")) {
+      btn.addEventListener("click", async () => {
+        const text = btn.dataset.copy || "";
+        const label = btn.querySelector(".copy-label");
+        try {
+          await navigator.clipboard.writeText(text);
+          btn.classList.add("is-copied");
+          if (label) label.textContent = "Copied";
+          setTimeout(() => {
+            btn.classList.remove("is-copied");
+            if (label) label.textContent = "Click to copy";
+          }, 1600);
+        } catch {
+          if (label) label.textContent = "Copy failed";
+        }
+      });
+    }
+  </script>
 </body>
 </html>

@@ -20,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 VENV = ROOT / ".venv-peerfold"
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.15"
+PEERFOLD_VERSION = "0.1.16"
 
 
 def venv_paths() -> tuple[Path, Path]:

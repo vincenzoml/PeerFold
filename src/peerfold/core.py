@@ -1060,6 +1060,66 @@ class ServerSession:
         return getattr(self._require(), name)
 
 
+def parse_multipart_file_field(
+    body: bytes,
+    *,
+    content_type: str,
+    field_name: str = "file",
+) -> tuple[str, bytes]:
+    """Extract a named file field from multipart/form-data (stdlib-only; no cgi)."""
+    match = re.search(
+        r"boundary=([^;\s]+|'[^']+'|\"[^\"]+\")",
+        content_type,
+        re.IGNORECASE,
+    )
+    if not match:
+        raise ValueError("missing multipart boundary")
+    boundary = match.group(1).strip().strip("'\"")
+    marker = b"--" + boundary.encode("ascii", "surrogateescape")
+
+    for chunk in body.split(marker):
+        if not chunk or chunk in (b"--", b"--\r\n"):
+            continue
+        part = chunk[2:] if chunk.startswith(b"\r\n") else chunk
+        if part.endswith(b"\r\n"):
+            part = part[:-2]
+        sep = part.find(b"\r\n\r\n")
+        if sep < 0:
+            continue
+        headers = part[:sep].decode("latin-1", "replace")
+        payload = part[sep + 4 :]
+        if payload.endswith(b"\r\n"):
+            payload = payload[:-2]
+
+        disposition = next(
+            (
+                line
+                for line in headers.split("\r\n")
+                if line.lower().startswith("content-disposition:")
+            ),
+            "",
+        )
+        if not re.search(
+            rf'name="{re.escape(field_name)}"|name={re.escape(field_name)}(?:;|$)',
+            disposition,
+        ):
+            continue
+
+        filename = "upload.pdf"
+        fn_match = re.search(
+            r'filename\*?=(?:UTF-8\'\')?"?([^";\r\n]+)"?',
+            disposition,
+            re.IGNORECASE,
+        )
+        if fn_match:
+            filename = Path(fn_match.group(1).strip()).name or filename
+        if not payload:
+            raise ValueError("empty PDF upload")
+        return filename, payload
+
+    raise ValueError("missing PDF file")
+
+
 class ReviewHandler(BaseHTTPRequestHandler):
     session: ServerSession
     fitz_mod: Any
@@ -1090,32 +1150,21 @@ class ReviewHandler(BaseHTTPRequestHandler):
         return True
 
     def _read_upload_pdf(self) -> Path:
-        import cgi
-
         content_type = self.headers.get("Content-Type", "")
         if not content_type.startswith("multipart/form-data"):
             raise ValueError("expected multipart PDF upload")
-        fs = cgi.FieldStorage(
-            fp=self.rfile,
-            headers=self.headers,
-            environ={
-                "REQUEST_METHOD": "POST",
-                "CONTENT_TYPE": content_type,
-            },
-        )
-        if "file" not in fs:
-            raise ValueError("missing PDF file")
-        item = fs["file"]
-        if not getattr(item, "file", None):
+        length = int(self.headers.get("Content-Length", "0"))
+        if length <= 0:
             raise ValueError("empty PDF upload")
+        body = self.rfile.read(length)
+        raw_name, data = parse_multipart_file_field(body, content_type=content_type)
         upload_dir = data_dir() / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
-        raw_name = Path(getattr(item, "filename", "") or "upload.pdf").name
         if not raw_name.lower().endswith(".pdf"):
             raw_name = f"{raw_name}.pdf"
         stamp = time.strftime("%Y%m%d-%H%M%S")
         dest = upload_dir / f"{stamp}-{raw_name}"
-        dest.write_bytes(item.file.read())
+        dest.write_bytes(data)
         return dest
 
     def handle_error(self, request, client_address) -> None:

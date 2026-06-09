@@ -8,6 +8,7 @@ from peerfold.core import (
     cite_numbers_for_link,
     default_reviewer,
     import_fitz,
+    parse_multipart_file_field,
     parse_version_parts,
     pick_cite_for_click,
     sanitize_reviewer,
@@ -29,6 +30,24 @@ def test_sanitize_reviewer_bad():
 def test_annotated_path():
     p = annotated_path(Path("draft.pdf"), "VC", stamp="2026-06-09")
     assert p.name == "draft_VC-2026-06-09.pdf"
+
+
+def test_parse_multipart_file_field():
+    boundary = "----PeerFoldTest"
+    body = (
+        f"--{boundary}\r\n"
+        'Content-Disposition: form-data; name="file"; filename="paper.pdf"\r\n'
+        "Content-Type: application/pdf\r\n"
+        "\r\n"
+        "%PDF-1.4 test"
+        f"\r\n--{boundary}--\r\n"
+    ).encode("ascii")
+    name, data = parse_multipart_file_field(
+        body,
+        content_type=f"multipart/form-data; boundary={boundary}",
+    )
+    assert name == "paper.pdf"
+    assert data == b"%PDF-1.4 test"
 
 
 def test_static_root_exists():

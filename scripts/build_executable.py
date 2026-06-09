@@ -37,19 +37,20 @@ def use_onedir() -> bool:
 
 
 def package_outputs(app_dir: Path, name: str) -> list[Path]:
-    from package_release import make_dmg, make_sfx, read_version
+    from package_release import make_dmg, make_sfx, read_version  # noqa: PLC0415
 
     version = read_version(ROOT)
     dist = ROOT / "dist"
     outputs: list[Path] = []
 
-    sfx = dist / name
+    sfx_name = f"{name}.command" if sys.platform == "darwin" else name
+    sfx = dist / sfx_name
     make_sfx(app_dir, sfx, name, version)
     outputs.append(sfx)
 
     if sys.platform == "darwin":
         dmg = dist / f"{name}.dmg"
-        make_dmg(app_dir, dmg)
+        make_dmg(app_dir, dmg, name, version)
         outputs.append(dmg)
 
     return outputs

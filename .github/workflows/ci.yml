@@ -68,6 +68,8 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             dist/peerfold-win.exe --version
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            dist/peerfold-macos.command --version
           else
             base="${{ matrix.asset }}"
             base="${base%.exe}"
@@ -79,6 +81,8 @@ jobs:
         with:
           name: ${{ matrix.asset }}
           path: |
-            dist/${{ matrix.asset }}
-            dist/${{ matrix.asset }}.dmg
+            dist/peerfold-macos.command
+            dist/peerfold-macos.dmg
+            dist/peerfold-linux
+            dist/peerfold-win.exe
           if-no-files-found: ignore

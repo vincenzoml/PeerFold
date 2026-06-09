@@ -1,3 +1,3 @@
 """PeerFold — local PDF review with standard highlight annotations."""
 
-__version__ = "0.1.8"
+__version__ = "0.1.9"

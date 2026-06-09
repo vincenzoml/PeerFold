@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import io
-import os
+import plistlib
 import shutil
 import subprocess
 import tarfile
@@ -29,7 +29,24 @@ if [[ ! -f "${MARKER}" ]]; then
   tail -n "+${ARCHIVE_LINE}" "$0" | tar xz -C "${ROOT}"
   touch "${MARKER}"
 fi
-exec "${ROOT}/${NAME}/${NAME}" "$@"
+RUN="${ROOT}/${NAME}/${NAME}"
+if [[ $# -eq 0 && "$OSTYPE" == darwin* ]]; then
+  PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
+  [[ -z "${PDF}" ]] && exit 0
+  exec "${RUN}" "${PDF}"
+fi
+exec "${RUN}" "$@"
+"""
+
+LAUNCHER = """#!/bin/bash
+DIR="$(cd "$(dirname "$0")/../Resources/runtime" && pwd)"
+RUN="${DIR}/__BINARY__"
+if [[ $# -eq 0 ]]; then
+  PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
+  [[ -z "${PDF}" ]] && exit 0
+  exec "${RUN}" "${PDF}"
+fi
+exec "${RUN}" "$@"
 """
 
 
@@ -66,17 +83,44 @@ def make_sfx(app_dir: Path, output: Path, name: str, version: str) -> Path:
     return output
 
 
-def make_dmg(app_dir: Path, output: Path, *, volume: str = "PeerFold") -> Path:
+def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Path:
+    if output.exists():
+        shutil.rmtree(output)
+    macos = output / "Contents" / "MacOS"
+    resources = output / "Contents" / "Resources" / "runtime"
+    macos.mkdir(parents=True)
+    resources.mkdir(parents=True)
+    shutil.copytree(app_dir, resources, dirs_exist_ok=True)
+
+    launcher = macos / "peerfold"
+    launcher.write_text(LAUNCHER.replace("__BINARY__", name), encoding="utf-8")
+    launcher.chmod(0o755)
+
+    plist = {
+        "CFBundleExecutable": "peerfold",
+        "CFBundleIdentifier": "io.peerfold.app",
+        "CFBundleName": "PeerFold",
+        "CFBundleDisplayName": "PeerFold",
+        "CFBundlePackageType": "APPL",
+        "CFBundleShortVersionString": version,
+        "CFBundleVersion": version,
+        "LSMinimumSystemVersion": "11.0",
+        "NSHighResolutionCapable": True,
+    }
+    with (output / "Contents" / "Info.plist").open("wb") as fh:
+        plistlib.dump(plist, fh)
+    return output
+
+
+def make_dmg(app_dir: Path, output: Path, name: str, version: str, *, volume: str = "PeerFold") -> Path:
     if shutil.which("hdiutil") is None:
         raise SystemExit("hdiutil not found (macOS only)")
     staging = output.parent / "_dmg_staging"
     if staging.exists():
         shutil.rmtree(staging)
-    payload = staging / "PeerFold"
-    shutil.copytree(app_dir, payload)
+    make_app_bundle(app_dir, staging / "PeerFold.app", name, version)
     apps_link = staging / "Applications"
-    if not apps_link.exists():
-        apps_link.symlink_to("/Applications")
+    apps_link.symlink_to("/Applications")
     if output.exists():
         output.unlink()
     subprocess.run(
@@ -113,5 +157,5 @@ if __name__ == "__main__":
         make_sfx(args.app_dir, args.sfx, args.name, version)
         print(f"Self-extracting: {args.sfx}")
     if args.dmg:
-        make_dmg(args.app_dir, args.dmg)
+        make_dmg(args.app_dir, args.dmg, args.name, version)
         print(f"Disk image: {args.dmg}")

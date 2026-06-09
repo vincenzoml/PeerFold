@@ -59,6 +59,8 @@ jobs:
         run: |
           if [ "${{ runner.os }}" = "Windows" ]; then
             dist/peerfold-win.exe --version
+          elif [ "${{ runner.os }}" = "macOS" ]; then
+            dist/peerfold-macos.command --version
           else
             "dist/${{ matrix.name }}" --version
           fi
@@ -69,7 +71,7 @@ jobs:
           files: |
             dist/peerfold-win.exe
             dist/peerfold-linux
-            dist/peerfold-macos
+            dist/peerfold-macos.command
             dist/peerfold-macos.dmg
           fail_on_unmatched_files: false
           generate_release_notes: ${{ matrix.os == 'ubuntu-latest' }}

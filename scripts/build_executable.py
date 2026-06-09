@@ -102,18 +102,20 @@ def main() -> None:
     ]
     subprocess.run(cmd, cwd=ROOT, check=True)
 
-    app_dir = DIST_BUILD / base
-    binary = artifact_in_appdir(app_dir, base)
-    if not binary.is_file():
-        raise SystemExit(f"Expected build output missing: {binary}")
-
     if use_onedir():
+        app_dir = DIST_BUILD / base
+        binary = artifact_in_appdir(app_dir, base)
+        if not binary.is_file():
+            raise SystemExit(f"Expected build output missing: {binary}")
         sys.path.insert(0, str(ROOT / "scripts"))
         packaged = package_outputs(app_dir, base)
         print(f"Built {binary}")
         for path in packaged:
             print(f"Packaged {path}")
     else:
+        binary = DIST_BUILD / f"{base}.exe"
+        if not binary.is_file():
+            raise SystemExit(f"Expected build output missing: {binary}")
         final = dist / f"{base}.exe"
         shutil.move(str(binary), str(final))
         print(f"Built {final}")

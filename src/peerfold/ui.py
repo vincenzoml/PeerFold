@@ -5,11 +5,32 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
 from urllib.parse import urlparse
 
 
 class WebviewUnavailableError(RuntimeError):
     """Native window could not be opened."""
+
+
+class PeerFoldApi:
+    """JS bridge for native file dialogs (keeps review copies beside the original)."""
+
+    def pick_pdf(self) -> str | None:
+        import webview
+
+        windows = webview.windows
+        if not windows:
+            return None
+        result = windows[0].create_file_dialog(
+            webview.OPEN_DIALOG,
+            allow_multiple=False,
+            file_types=("PDF files (*.pdf)", "All files (*.*)"),
+        )
+        if not result:
+            return None
+        path = result[0] if isinstance(result, (list, tuple)) else result
+        return str(Path(path).expanduser().resolve())
 
 
 def ssh_session() -> bool:
@@ -71,6 +92,7 @@ def open_webview(url: str, title: str) -> None:
         min_size=(720, 480),
         background_color="#0c0c0e",
         text_select=True,
+        js_api=PeerFoldApi(),
     )
     webview.start(debug=False)
 

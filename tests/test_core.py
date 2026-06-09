@@ -50,6 +50,13 @@ def test_parse_multipart_file_field():
     assert data == b"%PDF-1.4 test"
 
 
+def test_annotated_path_beside_source():
+    src = Path("/Users/reviewer/Desktop/paper.pdf")
+    out = annotated_path(src, "VC", stamp="2026-06-09")
+    assert out.parent == src.parent
+    assert out.name == "paper_VC-2026-06-09.pdf"
+
+
 def test_static_root_exists():
     root = static_root()
     assert (root / "index.html").is_file()

@@ -178,13 +178,27 @@ function showWelcomeScreen() {
   el.className = "welcome-screen";
   el.innerHTML = `
     <strong>PeerFold</strong>
-    <p>Open a PDF to review. Drag a file anywhere, or use Open.</p>
+    <p>Open a PDF to review. Use <strong>Open…</strong> (⌘O) so the annotated copy saves beside the original.</p>
     <button type="button" class="btn primary" data-welcome-open>Open PDF…</button>
   `;
   el.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
-    openPdfInputEl?.click();
+    void pickAndOpenPdf();
   });
   pagesEl.appendChild(el);
+}
+
+async function openPdfByPath(path) {
+  if (!path) return;
+  if (!confirmUnsaved("Open another PDF")) return;
+  await settleDraft();
+  await blurComment();
+  showBootMessage("Opening PDF…");
+  const doc = await api("/api/open", {
+    method: "POST",
+    body: JSON.stringify({ path }),
+  });
+  await applyOpenDocument(doc);
+  startDiskSync();
 }
 
 async function openPdfFile(file) {
@@ -200,6 +214,25 @@ async function openPdfFile(file) {
   if (!res.ok) throw new Error(data.error || res.statusText);
   await applyOpenDocument(data);
   startDiskSync();
+  toast("Uploaded copy — use Open… (⌘O) to save the review beside the original file", 5000);
+}
+
+async function nativePdfPickerAvailable() {
+  return Boolean(window.pywebview?.api?.pick_pdf);
+}
+
+async function pickAndOpenPdf() {
+  if (await nativePdfPickerAvailable()) {
+    try {
+      const path = await window.pywebview.api.pick_pdf();
+      if (path) await openPdfByPath(path);
+      return;
+    } catch (err) {
+      toast(err.message || "Could not open file picker");
+      return;
+    }
+  }
+  openPdfInputEl?.click();
 }
 
 async function applyOpenDocument(doc) {
@@ -228,7 +261,15 @@ async function applyOpenDocument(doc) {
   initPageViewport();
   scheduleStubSync();
   seedViewerNavHistory();
-  toast(`Opened ${doc.name}`, 2200);
+  const saveName = basename(doc.save_path);
+  const srcName = basename(doc.source || doc.name);
+  const sameFolder = dirname(doc.save_path) === dirname(doc.source || doc.save_path);
+  toast(
+    sameFolder
+      ? `Saving as ${saveName} beside ${srcName}`
+      : `Saving as ${saveName} in ${dirname(doc.save_path)}`,
+    4500,
+  );
 }
 
 async function bootViewer() {
@@ -240,7 +281,7 @@ async function bootViewer() {
 }
 
 function wireOpenPdf() {
-  const pick = () => openPdfInputEl?.click();
+  const pick = () => { void pickAndOpenPdf(); };
   openPdfBtnEl?.addEventListener("click", pick);
   openPdfInputEl?.addEventListener("change", () => {
     const file = openPdfInputEl.files?.[0];
@@ -316,6 +357,12 @@ function basename(p) {
   return p.split(/[/\\]/).pop();
 }
 
+function dirname(p) {
+  const parts = (p || "").split(/[/\\]/);
+  parts.pop();
+  return parts.join("/") || ".";
+}
+
 function trimText(s) {
   return (s || "").trim();
 }
@@ -389,12 +436,12 @@ function settleDraftSync() {
 
 document.addEventListener("click", (e) => {
   if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) hideCtx();
-  if (state.draft && !state.draft.committed && !trimText(state.draft.ta?.value)) {
-    if (e.target.closest("#comment-editor")) return;
-    if (e.target.closest(".comment-card.draft")) return;
-    if (e.target.closest("#viewer")) return;
-    clearDraft();
-  }
+  if (!state.draft || state.draft.committed) return;
+  if (e.target.closest("#comment-editor")) return;
+  if (e.target.closest(".comment-card.draft")) return;
+  if (e.target.closest("#viewer")) return;
+  if (draftText()) void settleDraft();
+  else clearDraft();
 });
 
 document.addEventListener("mousedown", (e) => {
@@ -414,14 +461,21 @@ document.addEventListener("mousedown", (e) => {
 
 function updateDocMeta() {
   if (!state.doc) return;
+  const metaEl = $("#doc-meta");
   if (!state.doc.open) {
-    $("#doc-meta").textContent = "No PDF open · drop a file or click Open";
+    metaEl.textContent = "No PDF open · Open… keeps the review copy beside the original";
+    metaEl.title = "";
     return;
   }
-  const unsaved = hasUnsavedChanges() ? " · unsaved changes" : "";
-  const mode = state.autosave ? " · autosave on" : " · manual save";
-  $("#doc-meta").textContent =
-    `${state.doc.pages} pages · ${basename(state.doc.save_path)}${mode}${unsaved}`;
+  const unsaved = hasUnsavedChanges() ? " · unsaved" : "";
+  const mode = state.autosave ? "" : " · manual save";
+  const saveName = basename(state.doc.save_path);
+  const srcName = basename(state.doc.source || state.doc.name);
+  const sameFolder = dirname(state.doc.save_path) === dirname(state.doc.source || state.doc.save_path);
+  metaEl.textContent = sameFolder
+    ? `${state.doc.pages} p · ${saveName} beside ${srcName}${mode}${unsaved}`
+    : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${mode}${unsaved}`;
+  metaEl.title = state.doc.save_path;
 }
 
 function updateSaveUi() {
@@ -429,8 +483,8 @@ function updateSaveUi() {
   autosaveWrapEl.classList.toggle("is-on", state.autosave);
   autosaveStateEl.textContent = state.autosave ? "On" : "Off";
   saveBtnEl.disabled = state.autosave;
-  saveBtnEl.title = state.autosave
-    ? "Disabled while autosave is on"
+  saveBtnEl.title = state.doc?.save_path
+    ? (state.autosave ? `Autosave → ${state.doc.save_path}` : `Save to ${state.doc.save_path}`)
     : "Save now (⌘S)";
   updateDocMeta();
 }
@@ -877,6 +931,10 @@ async function onDraftEditorInputSave() {
     await refreshPageBitmap(page);
     syncDocFlags(await api("/api/document"));
     emergencyBackup();
+    const savePath = created.save_path || state.doc?.save_path;
+    if (savePath && state.doc) state.doc.save_path = savePath;
+    updateDocMeta();
+    toast(`Comment saved · ${basename(savePath)}`, 2800);
     const caret = commentEditorTa.selectionStart;
     focusAnnotation(created.id, { center: false, edit: true, scrollCard: false, behavior: "auto" });
     requestAnimationFrame(() => {
@@ -908,7 +966,14 @@ commentEditorTa?.addEventListener("input", () => {
   draftSaveTimer = setTimeout(() => {
     draftSaveTimer = null;
     void onDraftEditorInputSave();
-  }, 400);
+  }, 200);
+});
+
+commentEditorTa?.addEventListener("blur", () => {
+  if (!state.draft || state.draft.committed || !draftText()) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  void onDraftEditorInputSave();
 });
 
 function focusDraftNote() {
@@ -2823,7 +2888,7 @@ async function init() {
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "o") {
       ev.preventDefault();
-      openPdfInputEl?.click();
+      void pickAndOpenPdf();
       return;
     }
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") {

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peerfold-review"
-version = "0.1.16"
+version = "0.1.17"
 description = "Local PDF review with browser UI and Acrobat-compatible highlights"
 readme = "README.md"
 license = { file = "LICENSE" }

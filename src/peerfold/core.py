@@ -376,20 +376,19 @@ class PdfSession:
         self._file_mtime = self._disk_mtime()
         self._citation_entries: list[tuple[int, int, float]] = []
         self._citation_urls: dict[int, str] = {}
+        self._cleanup_empty_highlights()
         if defer_maintenance:
             threading.Thread(
-                target=self._deferred_maintenance,
-                name="peerfold-maintenance",
+                target=self._deferred_citation_index,
+                name="peerfold-citations",
                 daemon=True,
             ).start()
         else:
             self._rebuild_citation_index()
-            self._cleanup_empty_highlights()
 
-    def _deferred_maintenance(self) -> None:
+    def _deferred_citation_index(self) -> None:
         with self.lock:
             self._rebuild_citation_index()
-            self._cleanup_empty_highlights()
 
     def close(self) -> None:
         with self.lock:
@@ -749,7 +748,9 @@ class PdfSession:
             annot.set_opacity(0.45)
             annot.update()
             self._persist()
-            return self._annot_response(self._annot_dict(page_index, annot, color_name, rects=span_rects))
+            payload = self._annot_response(self._annot_dict(page_index, annot, color_name, rects=span_rects))
+            payload["save_path"] = str(self.save_path)
+            return payload
 
     def _rects_from_annot(self, annot) -> list[list[float]]:
         quad_points = annot.vertices
@@ -1149,6 +1150,21 @@ class ReviewHandler(BaseHTTPRequestHandler):
         self._json(503, {"status": "no_document"})
         return True
 
+    def _resolve_open_pdf(self) -> Path:
+        content_type = self.headers.get("Content-Type", "")
+        if content_type.startswith("multipart/form-data"):
+            return self._read_upload_pdf()
+        data = self._read_json()
+        raw = data.get("path")
+        if not raw:
+            raise ValueError('Open a PDF with a file upload or JSON {"path": "/full/path.pdf"}')
+        path = Path(str(raw)).expanduser().resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"PDF not found: {path}")
+        if path.suffix.lower() != ".pdf":
+            raise ValueError("not a PDF file")
+        return path
+
     def _read_upload_pdf(self) -> Path:
         content_type = self.headers.get("Content-Type", "")
         if not content_type.startswith("multipart/form-data"):
@@ -1257,7 +1273,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if self._guard_api():
                 return
             try:
-                pdf_path = self._read_upload_pdf()
+                pdf_path = self._resolve_open_pdf()
                 doc = self.session.open_pdf(pdf_path)
                 return self._json(200, doc)
             except (ValueError, FileNotFoundError) as exc:
@@ -1411,6 +1427,20 @@ def update_check_payload() -> dict[str, Any]:
     }
 
 
+def print_review_target(session: ServerSession) -> None:
+    session._ready.wait()
+    if session.loading_error or not session.has_document:
+        return
+    info = session.document_info()
+    save = info.get("save_path") or ""
+    source = info.get("source") or ""
+    if not save:
+        return
+    print(f"Review copy: {save}")
+    if source and Path(save).resolve().parent == Path(source).resolve().parent:
+        print(f"  (beside {Path(source).name})")
+
+
 def run_server(
     pdf: Path | None,
     *,
@@ -1455,6 +1485,7 @@ def run_server(
     else:
         print("PeerFold")
     print(f"Open: {url}")
+    print_review_target(session)
 
     if ui == "webview" and headless_environment():
         print(webview_unavailable_help(url=url), file=sys.stderr)
@@ -1464,8 +1495,6 @@ def run_server(
         session._ready.wait()
         if session.loading_error:
             raise SystemExit(session.loading_error)
-        if pdf:
-            print(f"Save copy: {session.save_path}")
         try:
             server.serve_forever()
         except KeyboardInterrupt:

@@ -18,16 +18,18 @@ install_macos() {
     exit 1
   fi
 
-  local tmp mount dest apps_dir
+  local tmp mount_point dest apps_dir
   tmp="$(mktemp -d)"
-  mount="${tmp}/mount"
-  mkdir -p "$mount"
+  mount_point="${tmp}/mount"
+  mkdir -p "$mount_point"
 
   cleanup() {
-    if [[ -f "${mount}/PeerFold.app/Contents/Info.plist" ]]; then
-      hdiutil detach "$mount" -quiet 2>/dev/null || true
+    if [[ -n "${mount_point:-}" && -d "${mount_point}/PeerFold.app" ]]; then
+      hdiutil detach "$mount_point" -quiet 2>/dev/null || true
     fi
-    rm -rf "$tmp"
+    if [[ -n "${tmp:-}" && -d "${tmp}" ]]; then
+      rm -rf "$tmp"
+    fi
   }
   trap cleanup EXIT
 

@@ -356,6 +356,15 @@ body {
   text-align: center;
 }
 
+.viewer-boot {
+  margin: 72px auto;
+  max-width: 420px;
+  padding: 20px 22px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .viewer-error strong {
   display: block;
   margin-bottom: 8px;

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import subprocess
 import sys
 
 
@@ -36,7 +37,21 @@ def open_webview_or_browser(url: str, title: str) -> str:
         except Exception as exc:
             print(f"PeerFold: embedded window failed ({exc}); using system browser.", file=sys.stderr)
 
+    open_url(url)
+    return "browser"
+
+
+def open_url(url: str) -> None:
+    """Open a local PeerFold URL in the default browser."""
+    if sys.platform == "darwin":
+        subprocess.Popen(
+            ["open", url],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        return
+
     import webbrowser
 
     webbrowser.open(url)
-    return "browser"

@@ -335,7 +335,14 @@ def annot_fingerprint(ann: dict[str, Any]) -> tuple[Any, ...]:
 
 
 class PdfSession:
-    def __init__(self, source: Path, reviewer: str, fitz_mod: Any) -> None:
+    def __init__(
+        self,
+        source: Path,
+        reviewer: str,
+        fitz_mod: Any,
+        *,
+        defer_maintenance: bool = False,
+    ) -> None:
         self.fitz = fitz_mod
         self.source = source.resolve()
         self.reviewer = sanitize_reviewer(reviewer)
@@ -353,8 +360,20 @@ class PdfSession:
         self._file_mtime = self._disk_mtime()
         self._citation_entries: list[tuple[int, int, float]] = []
         self._citation_urls: dict[int, str] = {}
-        self._rebuild_citation_index()
-        self._cleanup_empty_highlights()
+        if defer_maintenance:
+            threading.Thread(
+                target=self._deferred_maintenance,
+                name="peerfold-maintenance",
+                daemon=True,
+            ).start()
+        else:
+            self._rebuild_citation_index()
+            self._cleanup_empty_highlights()
+
+    def _deferred_maintenance(self) -> None:
+        with self.lock:
+            self._rebuild_citation_index()
+            self._cleanup_empty_highlights()
 
     def close(self) -> None:
         with self.lock:
@@ -900,12 +919,67 @@ class PdfSession:
         with self.lock:
             return self._persist_now()
 
+
+class BootstrappingSession:
+    """Load PdfSession in the background so the UI can open immediately."""
+
+    def __init__(self, source: Path, reviewer: str) -> None:
+        self._source = source
+        self._reviewer = reviewer
+        self._session: PdfSession | None = None
+        self._error: BaseException | None = None
+        self._ready = threading.Event()
+        threading.Thread(target=self._load, name="peerfold-load", daemon=True).start()
+
+    @property
+    def ready(self) -> bool:
+        return self._ready.is_set() and self._error is None
+
+    @property
+    def loading_error(self) -> str | None:
+        return None if self._error is None else str(self._error)
+
+    def _load(self) -> None:
+        try:
+            fitz = import_fitz()
+            self._session = PdfSession(self._source, self._reviewer, fitz, defer_maintenance=True)
+        except BaseException as exc:
+            self._error = exc
+        finally:
+            self._ready.set()
+
+    def _require(self) -> PdfSession:
+        self._ready.wait()
+        if self._error is not None:
+            raise self._error
+        assert self._session is not None
+        return self._session
+
+    def close(self) -> None:
+        if self._session is not None:
+            self._session.close()
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._require(), name)
+
+
 class ReviewHandler(BaseHTTPRequestHandler):
-    session: PdfSession
+    session: PdfSession | BootstrappingSession
     fitz_mod: Any
 
     def log_message(self, fmt: str, *args) -> None:
         pass
+
+    def _guard_api(self) -> bool:
+        session = self.session
+        if getattr(session, "ready", True):
+            return False
+        err = getattr(session, "loading_error", None)
+        if err:
+            self._json(500, {"error": err})
+        else:
+            self._json(503, {"status": "loading"})
+        return True
 
     def handle_error(self, request, client_address) -> None:
         exc_type, _, _ = sys.exc_info()
@@ -959,15 +1033,23 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return
             return self._file(target)
         if path == "/api/document":
+            if self._guard_api():
+                return
             return self._json(200, self.session.document_info())
         if path == "/api/sync":
+            if self._guard_api():
+                return
             qs = parse_qs(parsed.query)
             since = int(qs.get("since", ["0"])[0] or 0)
             payload = self.session.sync_from_disk(since=since)
             return self._json(200, payload)
         if path == "/api/annotations":
+            if self._guard_api():
+                return
             return self._json(200, self.session.list_annotations())
         if path.startswith("/api/page/"):
+            if self._guard_api():
+                return
             try:
                 index = int(path.split("/")[-1])
             except ValueError:
@@ -983,6 +1065,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         path = unquote(parsed.path)
+        if path.startswith("/api/") and self._guard_api():
+            return
         try:
             if path == "/api/annotations":
                 data = self._read_json()
@@ -1028,6 +1112,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
         if not path.startswith("/api/annotations/"):
             self.send_error(404)
             return
+        if self._guard_api():
+            return
         try:
             xref = int(path.rsplit("/", 1)[-1])
             data = self._read_json()
@@ -1049,6 +1135,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
         path = unquote(parsed.path)
         if not path.startswith("/api/annotations/"):
             self.send_error(404)
+            return
+        if self._guard_api():
             return
         try:
             xref = int(path.rsplit("/", 1)[-1])
@@ -1076,29 +1164,31 @@ def run_server(
     ui: str = "webview",
 ) -> None:
     """Start PeerFold. ui: webview (default), browser, or none."""
-    from peerfold.ui import open_webview_or_browser
+    from peerfold.ui import open_url, open_webview_or_browser
 
-    fitz = import_fitz()
     pdf = pdf.resolve()
     if not pdf.is_file():
         raise SystemExit(f"PDF not found: {pdf}")
 
     reviewer = sanitize_reviewer(reviewer)
-    session = PdfSession(pdf, reviewer, fitz)
+    session = BootstrappingSession(pdf, reviewer)
     chosen = pick_port(port)
     url = f"http://127.0.0.1:{chosen}/"
     title = f"PeerFold · {pdf.name}"
 
     handler = type("BoundReviewHandler", (ReviewHandler,), {})
     handler.session = session
-    handler.fitz_mod = fitz
+    handler.fitz_mod = None
     server = ThreadingHTTPServer(("127.0.0.1", chosen), handler)
 
     print(f"PeerFold · {pdf.name}")
-    print(f"Save copy: {session.save_path}")
     print(f"Open: {url}")
 
     if ui == "none":
+        session._ready.wait()
+        if session.loading_error:
+            raise SystemExit(session.loading_error)
+        print(f"Save copy: {session.save_path}")
         try:
             server.serve_forever()
         except KeyboardInterrupt:
@@ -1108,10 +1198,10 @@ def run_server(
             session.close()
         return
 
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
     if ui == "webview":
-        thread = threading.Thread(target=server.serve_forever, daemon=True)
-        thread.start()
-        time.sleep(0.2)
         try:
             mode = open_webview_or_browser(url, title)
             if mode == "browser":
@@ -1125,13 +1215,12 @@ def run_server(
             session.close()
         return
 
-    import webbrowser
-
-    webbrowser.open(url)
+    open_url(url)
     try:
-        server.serve_forever()
+        thread.join()
     except KeyboardInterrupt:
         print("\nStopping…")
     finally:
+        server.shutdown()
         server.server_close()
         session.close()

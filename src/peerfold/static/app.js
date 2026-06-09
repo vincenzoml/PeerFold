@@ -126,8 +126,42 @@ async function api(path, opts = {}) {
     ...opts,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 503 && data.status === "loading") {
+    const err = new Error("loading");
+    err.loading = true;
+    throw err;
+  }
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function showBootMessage(msg) {
+  if (!pagesEl) return;
+  pagesEl.replaceChildren();
+  const el = document.createElement("div");
+  el.className = "viewer-boot";
+  el.textContent = msg;
+  pagesEl.appendChild(el);
+}
+
+async function waitForDocument() {
+  showBootMessage("Opening PDF…");
+  for (let attempt = 0; attempt < 600; attempt += 1) {
+    try {
+      return await api("/api/document");
+    } catch (err) {
+      if (err.loading) {
+        await sleep(100);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Timed out while opening the PDF");
 }
 
 function toast(msg, ms = 2200) {
@@ -2598,7 +2632,7 @@ async function init() {
   if (cleanUrl.searchParams.delete("layout")) {
     history.replaceState(null, "", cleanUrl);
   }
-  state.doc = await api("/api/document");
+  state.doc = await waitForDocument();
   state.autosave = state.doc.autosave;
   setServerRevision(state.doc.revision ?? 0);
   $("#doc-name").textContent = state.doc.name;

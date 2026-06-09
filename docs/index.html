@@ -173,13 +173,15 @@
     <h2>Install</h2>
 
     <div class="platform-block">
-      <h3>macOS</h3>
-      <p class="hint">Paste in Terminal. The disk image opens — drag the app to Applications, then launch it.</p>
-      <div class="cmd"><span>$ </span>curl -fsSL -o ~/Downloads/peerfold-macos.dmg "https://github.com/vincenzoml/PeerFold/releases/latest/download/peerfold-macos.dmg" &amp;&amp; xattr -d com.apple.quarantine ~/Downloads/peerfold-macos.dmg 2&gt;/dev/null; open ~/Downloads/peerfold-macos.dmg</div>
-      <ol class="steps">
-        <li>Drag <strong>PeerFold</strong> to <strong>Applications</strong></li>
-        <li>Open PeerFold and choose your PDF</li>
-      </ol>
+      <h3>macOS &amp; Linux</h3>
+      <p class="hint">Detects your OS, downloads the latest release, and installs. macOS → Applications; Linux → <code>~/.local/bin/peerfold</code>.</p>
+      <div class="cmd"><span>$ </span>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</div>
+    </div>
+
+    <div class="platform-block">
+      <h3>Windows</h3>
+      <p class="hint">PowerShell — installs to <code>%LOCALAPPDATA%\Programs\PeerFold</code> and adds it to your user PATH.</p>
+      <div class="cmd"><span>&gt; </span>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</div>
     </div>
 
     <div class="platform-block">
@@ -189,13 +191,6 @@
         <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
         <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
       </div>
-    </div>
-
-    <div class="platform-block">
-      <h3>Linux &amp; Windows</h3>
-      <p class="hint">Download the binary for your system from <a href="https://github.com/vincenzoml/PeerFold/releases/latest">Releases</a>, then run:</p>
-      <div class="cmd"><span>$ </span>./peerfold-linux manuscript.pdf --reviewer RB</div>
-      <div class="cmd"><span>&gt; </span>peerfold-win.exe manuscript.pdf --reviewer RB</div>
     </div>
 
     <h2>Built for peer review</h2>

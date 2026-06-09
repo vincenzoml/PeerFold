@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="dark">
   <meta name="theme-color" content="#0c0c0e">
-  <meta name="description" content="PeerFold — fast PDF peer review with standard highlight annotations.">
+  <meta name="description" content="PeerFold — lightweight PDF peer review with standard highlight annotations.">
   <title>PeerFold</title>
   <style>
     :root {
@@ -39,15 +39,21 @@
     .lede {
       margin-top: 1rem;
       font-size: 1.05rem;
-      color: var(--fg);
       max-width: 36em;
     }
-    .why {
-      margin-top: 1.25rem;
+    .points {
+      margin-top: 1.5rem;
+      display: grid;
+      gap: 0.85rem;
+    }
+    .points li {
+      list-style: none;
       color: var(--muted);
-      font-size: 0.98rem;
-      max-width: 36em;
+      font-size: 0.94rem;
+      padding-left: 1rem;
+      border-left: 2px solid var(--line);
     }
+    .points strong { color: var(--fg); font-weight: 600; }
     .shot {
       margin: 2.25rem 0;
       border: 1px solid var(--line);
@@ -60,7 +66,6 @@
     h2 {
       font-size: 0.95rem;
       font-weight: 600;
-      color: var(--fg);
       margin-bottom: 0.75rem;
     }
     p {
@@ -104,10 +109,7 @@
       visibility: hidden;
     }
     .copy-cmd.is-copied .copy-label { visibility: visible; }
-    .note {
-      font-size: 0.85rem;
-      color: var(--muted);
-    }
+    .note { font-size: 0.85rem; color: var(--muted); }
     footer {
       margin-top: 3rem;
       padding-top: 1.25rem;
@@ -129,12 +131,16 @@
   <div class="wrap">
     <header>
       <h1>PeerFold</h1>
-      <p class="lede">Highlight and comment on a PDF like you would on paper — in a small native app, not a browser tab.</p>
-      <p class="why">Comments are written straight into the PDF as normal highlights. Send the file back; authors open it in Acrobat, Preview, or whatever they already use. No proprietary format, no extra export step.</p>
+      <p class="lede">A small native app for PDF peer review. Select a span, type a note, keep reading — annotations land in the file as ordinary PDF highlights.</p>
+      <ul class="points">
+        <li><strong>Light.</strong> Tiny install, opens fast, no database or project setup.</li>
+        <li><strong>Lives in the paper repo.</strong> One launcher script pins a version in git; <code>--update</code> bumps the pin so co-authors stay aligned.</li>
+        <li><strong>Built for speed.</strong> The UI does one job — take review notes — not menus, plugins, or export wizards.</li>
+      </ul>
     </header>
 
     <figure class="shot">
-      <img src="hero.png?v=2" width="1440" height="900" alt="PeerFold with PDF highlights and a comment thread">
+      <img src="hero.png" width="1440" height="900" alt="PeerFold showing a PDF with highlights and comments">
     </figure>
 
     <section>
@@ -149,7 +155,7 @@
         <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
         <span class="copy-label" aria-live="polite"></span>
       </button>
-      <p class="note">Python 3.10+ — <code>peerfold paper.pdf --reviewer AB</code>. Over SSH add <code>--web</code>.</p>
+      <p class="note">Python 3.10+ · <code>peerfold paper.pdf --reviewer AB</code> · SSH: add <code>--web</code></p>
       <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
         <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
         <span class="copy-label" aria-live="polite"></span>
@@ -157,13 +163,13 @@
     </section>
 
     <section>
-      <h2>Shared project folder</h2>
-      <p>Drop one script in the repo so everyone runs the same version. It keeps a local venv; commit the script, gitignore <code>.venv-peerfold/</code>.</p>
+      <h2>Paper directory</h2>
+      <p>Add the launcher once; commit it, gitignore <code>.venv-peerfold/</code>. Everyone runs the same pinned build from the shared folder.</p>
       <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
         <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
         <span class="copy-label" aria-live="polite"></span>
       </button>
-      <p class="note">Then <code>python3 scripts/peerfold.py paper.pdf</code> · upgrade with <code>--update</code> and commit the script.</p>
+      <p class="note"><code>python3 scripts/peerfold.py paper.pdf</code> · new release: <code>--update</code>, then commit the script.</p>
     </section>
 
     <footer>

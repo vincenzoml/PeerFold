@@ -191,7 +191,10 @@
         <div class="cmd"><span>$ </span>python3 -m pip install --user peerfold-review</div>
         <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
       </div>
-      <p class="hint" style="margin-top:0.75rem">Or with pipx: <code>pipx install peerfold-review</code>. In a shared paper repo, use <code>python3 scripts/peerfold.py paper.pdf</code> — see <a href="https://github.com/vincenzoml/PeerFold/blob/main/scripts/peerfold.py">peerfold.py</a>.</p>
+      <p class="hint" style="margin-top:0.75rem">Or with pipx: <code>pipx install peerfold-review</code>.</p>
+      <p class="hint" style="margin-top:1rem"><strong>Shared paper repo</strong> — drop the launcher into any git repo (add <code>.venv-peerfold/</code> to <code>.gitignore</code>):</p>
+      <div class="cmd"><span>$ </span>mkdir -p scripts &amp;&amp; curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py</div>
+      <div class="cmd"><span>$ </span>python3 scripts/peerfold.py manuscript.pdf --reviewer RB</div>
     </div>
 
     <h2>Built for peer review</h2>

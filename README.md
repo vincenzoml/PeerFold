@@ -49,7 +49,14 @@ peerfold manuscript.pdf --reviewer RB
 Do **not** submodule PeerFold — it is a published package. Pick one:
 
 1. **One-liner** — each co-author runs `python3 -m pip install --user peerfold-review` once.
-2. **Repo launcher** (recommended) — add `scripts/peerfold.py` (see [PeerFold repo](https://github.com/vincenzoml/PeerFold/blob/main/scripts/peerfold.py)) so everyone runs `python3 scripts/peerfold.py paper.pdf`; it creates `.venv-peerfold/`, installs/upgrades from PyPI, and launches `peerfold`.
+2. **Repo launcher** (recommended for co-authors) — from your paper repo root:
+
+```bash
+mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py
+python3 scripts/peerfold.py review-builds/paper.pdf --reviewer AB
+```
+
+Add `.venv-peerfold/` to `.gitignore`. Re-running upgrades PeerFold from PyPI.
 3. **Standalone app** — `curl -fsSL …/install.sh | bash` (macOS/Linux) or the Windows PowerShell installer; no Python needed.
 
 Manual downloads: [GitHub Releases](https://github.com/vincenzoml/PeerFold/releases/latest).

@@ -22,12 +22,35 @@ irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex
 
 Installs to `%LOCALAPPDATA%\Programs\PeerFold` and adds `peerfold` to your user PATH.
 
-**Python 3.10+**
+**Python 3.10+** (no pipx required)
+
+```bash
+python3 -m pip install --user peerfold-review
+peerfold manuscript.pdf --reviewer RB
+```
+
+Ensure `~/.local/bin` is on your PATH, or use a virtual environment:
+
+```bash
+python3 -m venv .venv && source .venv/bin/activate
+pip install peerfold-review
+peerfold manuscript.pdf --reviewer RB
+```
+
+With [pipx](https://pipx.pypa.io/) (isolated CLI on PATH):
 
 ```bash
 pipx install peerfold-review
 peerfold manuscript.pdf --reviewer RB
 ```
+
+### Sharing with co-authors (same paper repo)
+
+Do **not** submodule PeerFold — it is a published package. Pick one:
+
+1. **One-liner** — each co-author runs `python3 -m pip install --user peerfold-review` once.
+2. **Repo launcher** (recommended) — add `scripts/peerfold.py` (see [PeerFold repo](https://github.com/vincenzoml/PeerFold/blob/main/scripts/peerfold.py)) so everyone runs `python3 scripts/peerfold.py paper.pdf`; it creates `.venv-peerfold/`, installs/upgrades from PyPI, and launches `peerfold`.
+3. **Standalone app** — `curl -fsSL …/install.sh | bash` (macOS/Linux) or the Windows PowerShell installer; no Python needed.
 
 Manual downloads: [GitHub Releases](https://github.com/vincenzoml/PeerFold/releases/latest).
 

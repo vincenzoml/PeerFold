@@ -186,11 +186,12 @@
 
     <div class="platform-block">
       <h3>Python</h3>
-      <p class="hint">If you already use Python 3.10+. Same native window as the standalone app.</p>
+      <p class="hint">Python 3.10+. Same native window as the standalone app. No pipx required.</p>
       <div class="install">
-        <div class="cmd"><span>$ </span>pipx install peerfold-review</div>
+        <div class="cmd"><span>$ </span>python3 -m pip install --user peerfold-review</div>
         <div class="cmd"><span>$ </span>peerfold manuscript.pdf --reviewer RB</div>
       </div>
+      <p class="hint" style="margin-top:0.75rem">Or with pipx: <code>pipx install peerfold-review</code>. In a shared paper repo, use <code>python3 scripts/peerfold.py paper.pdf</code> — see <a href="https://github.com/vincenzoml/PeerFold/blob/main/scripts/peerfold.py">peerfold.py</a>.</p>
     </div>
 
     <h2>Built for peer review</h2>

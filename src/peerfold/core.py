@@ -1,4 +1,4 @@
-"""PaperTrail server core: PDF session, annotations, and HTTP API."""
+"""PeerFold server core: PDF session, annotations, and HTTP API."""
 from __future__ import annotations
 
 import base64
@@ -20,20 +20,20 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 def static_root() -> Path:
     if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        return Path(sys._MEIPASS) / "papertrail" / "static"
-    return Path(str(resources.files("papertrail") / "static"))
+        return Path(sys._MEIPASS) / "peerfold" / "static"
+    return Path(str(resources.files("peerfold") / "static"))
 
 
 def data_dir() -> Path:
-    if custom := os.environ.get("PAPERTRAIL_DATA"):
+    if custom := os.environ.get("PEERFOLD_DATA"):
         root = Path(custom).expanduser()
     elif sys.platform == "darwin":
-        root = Path.home() / "Library" / "Application Support" / "PaperTrail"
+        root = Path.home() / "Library" / "Application Support" / "PeerFold"
     elif os.name == "nt":
-        root = Path(os.environ.get("APPDATA", Path.home())) / "PaperTrail"
+        root = Path(os.environ.get("APPDATA", Path.home())) / "PeerFold"
     else:
         xdg = os.environ.get("XDG_DATA_HOME")
-        root = Path(xdg) if xdg else Path.home() / ".local" / "share" / "papertrail"
+        root = Path(xdg) if xdg else Path.home() / ".local" / "share" / "peerfold"
     root.mkdir(parents=True, exist_ok=True)
     return root
 
@@ -1092,7 +1092,7 @@ def run_server(
     handler.fitz_mod = fitz
     server = ThreadingHTTPServer(("127.0.0.1", chosen), handler)
 
-    print(f"PaperTrail · {pdf.name}")
+    print(f"PeerFold · {pdf.name}")
     print(f"Save copy: {session.save_path}")
     print(f"Open: {url}")
 

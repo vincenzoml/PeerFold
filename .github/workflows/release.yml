@@ -33,11 +33,11 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            name: papertrail-linux
+            name: peerfold-linux
           - os: macos-latest
-            name: papertrail-macos
+            name: peerfold-macos
           - os: windows-latest
-            name: papertrail-win.exe
+            name: peerfold-win.exe
 
     runs-on: ${{ matrix.os }}
     steps:
@@ -57,5 +57,5 @@ jobs:
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/papertrail*
+          files: dist/peerfold*
           generate_release_notes: true

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Capture a PaperTrail UI screenshot for the GitHub Pages site."""
+"""Capture a PeerFold UI screenshot for the GitHub Pages site."""
 
 from __future__ import annotations
 
@@ -22,7 +22,7 @@ def main() -> None:
         subprocess.run([sys.executable, str(ROOT / "scripts" / "make_sample_pdf.py")], check=True)
         pdf = SAMPLE
 
-    from papertrail.core import run_server  # noqa: PLC0415
+    from peerfold.core import run_server  # noqa: PLC0415
 
     def serve() -> None:
         run_server(pdf, reviewer="VC", port=PORT, open_browser=False)

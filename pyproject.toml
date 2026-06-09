@@ -3,8 +3,8 @@ requires = ["setuptools>=61", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "papertrail-review"
-version = "0.1.0"
+name = "peerfold-review"
+version = "0.1.2"
 description = "Local PDF review with browser UI and Acrobat-compatible highlights"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -32,12 +32,12 @@ dev = [
 ]
 
 [project.scripts]
-papertrail = "papertrail.cli:main"
+peerfold = "peerfold.cli:main"
 
 [project.urls]
-Homepage = "https://vincenzoml.github.io/PaperTrail/"
-Repository = "https://github.com/vincenzoml/PaperTrail"
-Issues = "https://github.com/vincenzoml/PaperTrail/issues"
+Homepage = "https://vincenzoml.github.io/PeerFold/"
+Repository = "https://github.com/vincenzoml/PeerFold"
+Issues = "https://github.com/vincenzoml/PeerFold/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

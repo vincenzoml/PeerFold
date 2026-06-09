@@ -50,7 +50,7 @@ const state = {
 };
 
 const syncChannel = typeof BroadcastChannel !== "undefined"
-  ? new BroadcastChannel("review-viewer-sync")
+  ? new BroadcastChannel("peerfold-sync")
   : null;
 
 const ZOOM_MIN = 0.55;
@@ -68,19 +68,19 @@ const PAGE_LOAD_MARGIN = "1600px 0px";
 const MAX_PAGE_LOADS_IN_FLIGHT = 8;
 const USE_CSS_ZOOM = typeof CSS !== "undefined" && CSS.supports?.("zoom", "1");
 const DRAFT_GREY = "rgba(118, 118, 128, 0.44)";
-const LINK_WINDOW_NAME = "review-viewer-citation";
+const LINK_WINDOW_NAME = "peerfold-citation";
 const LINK_WINDOW_FEATURES = "width=1120,height=840,left=120,top=80,resizable=yes,scrollbars=yes";
 const COMMENTS_W_MIN = 220;
 const COMMENTS_W_MAX = 640;
 const COMMENTS_H_MIN = 120;
 const COMMENTS_H_MAX = 720;
-const LS_COMMENTS_W = "review-viewer-comments-w";
-const LS_COMMENTS_H = "review-viewer-comments-h";
-const LS_COMMENTS_COLLAPSED = "review-viewer-comments-collapsed";
+const LS_COMMENTS_W = "peerfold-comments-w";
+const LS_COMMENTS_H = "peerfold-comments-h";
+const LS_COMMENTS_COLLAPSED = "peerfold-comments-collapsed";
 
 const LINE_Y_TOL = 4;
 const DRAG_THRESHOLD = 4;
-const LS_KEY = "review-viewer-emergency";
+const LS_KEY = "peerfold-emergency";
 const HISTORY_MAX = 80;
 const $ = (sel) => document.querySelector(sel);
 const pagesViewportEl = $("#pages-viewport");

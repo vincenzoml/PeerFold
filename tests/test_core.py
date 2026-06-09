@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from papertrail.core import (
+from peerfold.core import (
     annotated_path,
     build_citation_index,
     cite_numbers_for_link,

@@ -178,7 +178,7 @@ function showWelcomeScreen() {
   el.className = "welcome-screen";
   el.innerHTML = `
     <strong>PeerFold</strong>
-    <p>Open a PDF to review. Use <strong>Open…</strong> (⌘O) so the annotated copy saves beside the original.</p>
+    <p>Open a PDF to review — drag from Finder, <strong>Open…</strong> (⌘O), or drop here. Review copy saves beside the original.</p>
     <button type="button" class="btn primary" data-welcome-open>Open PDF…</button>
   `;
   el.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
@@ -214,7 +214,15 @@ async function openPdfFile(file) {
   if (!res.ok) throw new Error(data.error || res.statusText);
   await applyOpenDocument(data);
   startDiskSync();
-  toast("Uploaded copy — use Open… (⌘O) to save the review beside the original file", 5000);
+}
+
+function wireNativeDropPaths() {
+  window.addEventListener("peerfold-drop-path", (ev) => {
+    const path = ev.detail;
+    if (path) {
+      void openPdfByPath(path).catch((err) => toast(err.message || "Could not open PDF"));
+    }
+  });
 }
 
 async function nativePdfPickerAvailable() {
@@ -281,6 +289,7 @@ async function bootViewer() {
 }
 
 function wireOpenPdf() {
+  wireNativeDropPaths();
   const pick = () => { void pickAndOpenPdf(); };
   openPdfBtnEl?.addEventListener("click", pick);
   openPdfInputEl?.addEventListener("change", () => {
@@ -306,6 +315,8 @@ function wireOpenPdf() {
       );
       if (!file) return;
       ev.preventDefault();
+      // Native window: Python drop handler sends peerfold-drop-path with full path.
+      if (window.pywebview?.api?.pick_pdf) return;
       void openPdfFile(file).catch((err) => toast(err.message || "Could not open PDF"));
     });
   }

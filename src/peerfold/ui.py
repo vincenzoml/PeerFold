@@ -81,10 +81,35 @@ def webview_unavailable_help(*, url: str | None = None, detail: str | None = Non
     return "\n".join(lines)
 
 
+def _bind_native_drop_paths(window) -> None:
+    """Forward full paths from native drag-drop (macOS/Linux GTK/Qt) to the UI."""
+    import json
+
+    from webview.dom import DOMEventHandler
+
+    def on_drop(event: dict) -> None:
+        for file in event.get("dataTransfer", {}).get("files") or []:
+            raw = file.get("pywebviewFullPath")
+            if not raw:
+                continue
+            path = Path(str(raw)).expanduser()
+            if path.suffix.lower() != ".pdf":
+                continue
+            payload = json.dumps(str(path.resolve()))
+            window.evaluate_js(
+                "window.dispatchEvent("
+                f'new CustomEvent("peerfold-drop-path", {{detail: {payload}}})'
+                ")"
+            )
+            return
+
+    window.dom.document.events.drop += DOMEventHandler(on_drop, True, True)
+
+
 def open_webview(url: str, title: str) -> None:
     import webview
 
-    webview.create_window(
+    window = webview.create_window(
         title,
         url,
         width=1440,
@@ -94,7 +119,14 @@ def open_webview(url: str, title: str) -> None:
         text_select=True,
         js_api=PeerFoldApi(),
     )
-    webview.start(debug=False)
+
+    def on_start() -> None:
+        try:
+            _bind_native_drop_paths(window)
+        except Exception:
+            pass
+
+    webview.start(on_start, debug=False)
 
 
 def open_webview_strict(url: str, title: str) -> None:

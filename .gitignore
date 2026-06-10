@@ -14,3 +14,4 @@ venv/
 *.bak
 *.tmp
 docs/demo_*.pdf
+.local-test

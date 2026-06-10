@@ -50,7 +50,7 @@ def test_document_close_shuts_down_server(host, tmp_path):
     thread.join(timeout=2)
 
 
-def test_additional_window_scheduled_on_main_thread(host, tmp_path, monkeypatch):
+def test_additional_window_spawns_on_background_thread(host, tmp_path, monkeypatch):
     pdf = tmp_path / "bg.pdf"
     pdf.write_bytes(b"%PDF-1.4\n")
     host._started = True
@@ -60,9 +60,33 @@ def test_additional_window_scheduled_on_main_thread(host, tmp_path, monkeypatch)
         created.set()
 
     monkeypatch.setattr(DocumentWindow, "create_webview_window", fake_create)
-    monkeypatch.setattr(
-        "peerfold.app_host.run_on_main_thread",
-        lambda fn: fn(),
-    )
     host.open_document(pdf)
-    assert created.is_set()
+    assert created.wait(timeout=2)
+
+
+def test_create_webview_window_does_not_bind_drop_at_creation(monkeypatch):
+    bound = []
+
+    class FakeEventSlot:
+        def __iadd__(self, _fn):
+            return self
+
+    class FakeEvents:
+        closed = FakeEventSlot()
+        loaded = FakeEventSlot()
+
+    class FakeWindow:
+        events = FakeEvents()
+
+    class FakeApi:
+        def set_window(self, _window):
+            pass
+
+    monkeypatch.setattr("peerfold.app_host._bind_native_drop_paths", lambda _w: bound.append(True))
+    monkeypatch.setattr("peerfold.ui.PeerFoldApi", FakeApi)
+    monkeypatch.setattr("webview.create_window", lambda *a, **k: FakeWindow())
+
+    host = AppHost("tester")
+    doc = DocumentWindow(host, "tester", None)
+    doc.create_webview_window()
+    assert bound == []

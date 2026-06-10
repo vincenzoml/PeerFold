@@ -15,7 +15,6 @@ from peerfold.ui import (
     _set_application_icon,
     build_application_menu,
     refresh_application_menu,
-    run_on_main_thread,
     run_on_main_thread_sync,
     webview_available,
 )
@@ -73,7 +72,14 @@ class DocumentWindow:
         )
         api.set_window(self.window)
         self.window.events.closed += self._on_closed
-        _bind_native_drop_paths(self.window)
+
+        def on_loaded() -> None:
+            try:
+                _bind_native_drop_paths(self.window)
+            except Exception:
+                pass
+
+        self.window.events.loaded += on_loaded
 
     def _on_closed(self) -> None:
         self._host._on_document_closed(self)
@@ -149,7 +155,11 @@ class AppHost:
         print_review_target(doc.session)
 
         if self._started:
-            run_on_main_thread(doc.create_webview_window)
+            threading.Thread(
+                target=doc.create_webview_window,
+                name="peerfold-new-window",
+                daemon=True,
+            ).start()
         return doc
 
     def open_document_path(self, path: str) -> None:
@@ -196,6 +206,7 @@ class AppHost:
         def on_start() -> None:
             try:
                 _set_application_icon()
+                _bind_native_drop_paths(first.window)
                 refresh_application_menu(self.menu_api)
                 if sys.platform == "darwin":
                     from peerfold.macos_events import install_open_documents_handler

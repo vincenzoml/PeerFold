@@ -18,7 +18,6 @@ const state = {
   pageLoadGen: new Map(),
   pageLoadQueue: [],
   savePending: 0,
-  autosave: true,
   localDirty: false,
   fileMtime: 0,
   syncTimer: null,
@@ -91,10 +90,6 @@ const pagesEl = $("#pages");
 const paletteEl = $("#palette");
 const reviewerEl = $("#reviewer");
 const reviewerListEl = $("#reviewer-list");
-const autosaveEl = $("#autosave");
-const autosaveWrapEl = $("#autosave-wrap");
-const autosaveStateEl = $("#autosave-state");
-const saveBtnEl = $("#save-btn");
 const viewerEl = $("#viewer");
 const commentsListEl = $("#comments-list");
 const commentsCountEl = $("#comments-count");
@@ -266,7 +261,7 @@ async function applyOpenDocument(doc) {
   reviewerEl.value = doc.reviewer;
   populateReviewers();
   buildPalette(doc.palette);
-  updateSaveUi();
+  updateDocMeta();
   if (!doc.open) {
     showWelcomeScreen();
     renderCommentsPane();
@@ -503,29 +498,17 @@ function updateDocMeta() {
     return;
   }
   const unsaved = hasUnsavedChanges() ? " · unsaved" : "";
-  const mode = state.autosave ? "" : " · manual save";
   if (editingInPlace()) {
-    metaEl.textContent = `${state.doc.pages} p · ${basename(state.doc.source || state.doc.name)}${mode}${unsaved}`;
+    metaEl.textContent = `${state.doc.pages} p · ${basename(state.doc.source || state.doc.name)}${unsaved}`;
   } else {
     const saveName = basename(state.doc.save_path);
     const srcName = basename(state.doc.source || state.doc.name);
     const sameFolder = dirname(state.doc.save_path) === dirname(state.doc.source || state.doc.save_path);
     metaEl.textContent = sameFolder
-      ? `${state.doc.pages} p · ${saveName} beside ${srcName}${mode}${unsaved}`
-      : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${mode}${unsaved}`;
+      ? `${state.doc.pages} p · ${saveName} beside ${srcName}${unsaved}`
+      : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${unsaved}`;
   }
   metaEl.title = state.doc.save_path;
-}
-
-function updateSaveUi() {
-  autosaveEl.checked = state.autosave;
-  autosaveWrapEl.classList.toggle("is-on", state.autosave);
-  autosaveStateEl.textContent = state.autosave ? "On" : "Off";
-  saveBtnEl.disabled = state.autosave;
-  saveBtnEl.title = state.doc?.save_path
-    ? (state.autosave ? `Autosave → ${state.doc.save_path}` : `Save to ${state.doc.save_path}`)
-    : "Save now (⌘S)";
-  updateDocMeta();
 }
 
 function hasUnsavedChanges() {
@@ -2691,11 +2674,10 @@ function startDiskSync() {
 
 async function syncDocFlags(doc) {
   state.doc = doc;
-  state.autosave = doc.autosave;
   state.fileMtime = doc.file_mtime ?? state.fileMtime;
   setServerRevision(doc.revision);
   if (!doc.unsaved) state.localDirty = false;
-  updateSaveUi();
+  updateDocMeta();
 }
 
 async function switchReviewer(name) {
@@ -2887,12 +2869,6 @@ function routeDraftTyping(ev) {
   return true;
 }
 
-async function saveNow() {
-  const res = await withSave(() => api("/api/save", { method: "POST", body: "{}" }));
-  await syncDocFlags(res);
-  toast(`Saved ${basename(res.path)}`, 3000);
-}
-
 async function init() {
   const cleanUrl = new URL(location.href);
   if (cleanUrl.searchParams.delete("layout")) {
@@ -2900,19 +2876,13 @@ async function init() {
   }
   wireOpenPdf();
   state.doc = await waitForApp();
-  state.autosave = state.doc.autosave;
   setServerRevision(state.doc.revision ?? 0);
   $("#doc-name").textContent = state.doc.open ? state.doc.name : "PeerFold";
   reviewerEl.value = state.doc.reviewer;
-  updateSaveUi();
+  updateDocMeta();
   populateReviewers();
   buildPalette(state.doc.palette);
 
-  autosaveWrapEl.addEventListener("click", (ev) => {
-    if (ev.target === autosaveEl) return;
-    autosaveEl.checked = !autosaveEl.checked;
-    autosaveEl.dispatchEvent(new Event("change", { bubbles: true }));
-  });
   reviewerEl.addEventListener("change", async () => {
     try {
       await switchReviewer(reviewerEl.value);
@@ -2922,24 +2892,6 @@ async function init() {
     }
   });
 
-  autosaveEl.addEventListener("change", async () => {
-    try {
-      const doc = await api("/api/settings", {
-        method: "POST",
-        body: JSON.stringify({ autosave: autosaveEl.checked }),
-      });
-      await syncDocFlags(doc);
-      toast(autosaveEl.checked ? "Autosave on" : "Autosave off — use Save");
-    } catch (err) {
-      autosaveEl.checked = state.autosave;
-      toast(err.message || "Could not change autosave");
-    }
-  });
-
-  $("#save-btn").addEventListener("click", () => {
-    if (state.autosave) return;
-    saveNow();
-  });
   commentsDeleteSelectedEl?.addEventListener("click", () => { void deleteSelectedComments(); });
   commentsClearSelectionEl?.addEventListener("click", clearCommentSelection);
   undoBtnEl?.addEventListener("click", () => { void performUndo(); });
@@ -2960,15 +2912,6 @@ async function init() {
     if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "o") {
       ev.preventDefault();
       void pickAndOpenPdf();
-      return;
-    }
-    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "s") {
-      ev.preventDefault();
-      if (state.autosave) {
-        toast("Autosave is on — Save is disabled");
-        return;
-      }
-      saveNow();
       return;
     }
     if (ev.key === "Escape") {

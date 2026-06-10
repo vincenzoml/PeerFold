@@ -24,17 +24,6 @@
                list="reviewer-list" placeholder="VC" aria-label="Reviewer short name">
         <datalist id="reviewer-list"></datalist>
       </label>
-      <label class="autosave-toggle is-on" id="autosave-wrap" title="Write every change to disk immediately">
-        <input id="autosave" type="checkbox" checked hidden>
-        <span class="autosave-track" aria-hidden="true"><span class="autosave-thumb"></span></span>
-        <span class="autosave-copy">
-          <span class="autosave-label">Autosave</span>
-          <span class="autosave-state" id="autosave-state">On</span>
-        </span>
-      </label>
-      <button id="save-btn" class="btn primary" type="button" title="Save now (⌘S)">
-        Save
-      </button>
     </div>
   </header>
 
@@ -51,7 +40,6 @@
       <button id="undo-btn" type="button" class="btn zoom-btn" title="Undo (⌘Z)" disabled aria-label="Undo">↩</button>
       <button id="redo-btn" type="button" class="btn zoom-btn" title="Redo (⌘⇧Z)" disabled aria-label="Redo">↪</button>
     </div>
-    <span class="toolbar-hint muted">Select text to comment · drag a PDF anywhere to open · ⌘O open · ⌘Z undo</span>
   </div>
 
   <input id="open-pdf-input" type="file" accept=".pdf,application/pdf" hidden>

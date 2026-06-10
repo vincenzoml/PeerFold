@@ -200,7 +200,7 @@
     <section class="shell install">
       <div class="install-grid">
         <article class="install-card">
-          <h2>macOS app</h2>
+          <h2>mac or linux</h2>
           <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
             <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
             <span class="copy-label" aria-live="polite"></span>
@@ -208,17 +208,17 @@
         </article>
 
         <article class="install-card">
-          <h2>Linux app</h2>
-          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
-            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
+          <h2>windows app</h2>
+          <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
+            <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
         </article>
 
         <article class="install-card">
           <h2>add to any folder</h2>
-          <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
-            <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
+          <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore && python3 scripts/peerfold.py paper.pdf">
+            <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore && python3 scripts/peerfold.py paper.pdf</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
         </article>

@@ -245,6 +245,12 @@ body {
   gap: 6px;
 }
 
+.palette-wrap {
+  flex-wrap: wrap;
+  align-items: center;
+  max-width: min(100%, 520px);
+}
+
 .swatch {
   width: 22px;
   height: 22px;
@@ -259,6 +265,28 @@ body {
 .swatch[aria-checked="true"] {
   box-shadow: 0 0 0 2px var(--surface-solid), 0 0 0 4px var(--accent);
   transform: scale(1.05);
+}
+
+.swatch-add {
+  background: var(--surface-solid);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  font-size: 15px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.swatch-add:hover {
+  color: var(--text);
+  border-color: color-mix(in srgb, var(--text) 22%, transparent);
+}
+
+.palette-color-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .viewer {

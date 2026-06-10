@@ -24,7 +24,7 @@ def refresh_open_recent_menu(paths: list[Path], open_handler: Callable[[str], No
         def openRecent_(self, sender) -> None:
             raw = sender.representedObject()
             if raw:
-                open_handler(str(raw))
+                open_handler(str(raw))  # caller must be main-thread safe
 
     if _handler is None:
         _handler = _Handler.alloc().init()

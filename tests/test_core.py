@@ -5,15 +5,20 @@ import pytest
 
 from peerfold import __version__
 from peerfold.core import (
+    PALETTE,
     annotated_path,
     app_version,
     build_citation_index,
     cite_numbers_for_link,
     default_reviewer,
+    hex_to_rgb,
     import_fitz,
+    nearest_palette_name,
     parse_multipart_file_field,
     parse_version_parts,
     pick_cite_for_click,
+    resolve_color,
+    rgb_to_hex,
     sanitize_reviewer,
     save_copy_enabled,
     ServerSession,
@@ -137,3 +142,22 @@ def test_citation_helpers_on_sample_pdf():
     entries, urls = build_citation_index(doc)
     assert entries
     assert urls
+
+
+def test_resolve_color_named_and_hex():
+    name, rgb = resolve_color("blue")
+    assert name == "blue"
+    assert rgb == PALETTE["blue"]
+    name, rgb = resolve_color("#a1b2c3")
+    assert name == "#a1b2c3"
+    assert rgb_to_hex(rgb) == "#a1b2c3"
+
+
+def test_hex_to_rgb_roundtrip():
+    rgb = hex_to_rgb("#ff8040")
+    assert rgb_to_hex(rgb) == "#ff8040"
+
+
+def test_nearest_palette_name_returns_hex_for_unknown():
+    custom = (0.12, 0.34, 0.56)
+    assert nearest_palette_name(custom) == rgb_to_hex(custom)

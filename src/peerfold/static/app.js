@@ -83,6 +83,7 @@ const LS_COMMENTS_COLLAPSED = "peerfold-comments-collapsed";
 const LINE_Y_TOL = 4;
 const DRAG_THRESHOLD = 4;
 const LS_UPDATE_DISMISS = "peerfold-update-dismiss";
+const LS_CUSTOM_PALETTE = "peerfold-custom-palette";
 const HISTORY_MAX = 80;
 const $ = (sel) => document.querySelector(sel);
 const pagesViewportEl = $("#pages-viewport");
@@ -648,29 +649,125 @@ async function withSave(fn) {
   }
 }
 
+function loadCustomPalette() {
+  try {
+    const raw = localStorage.getItem(LS_CUSTOM_PALETTE);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    const out = {};
+    for (const [name, hex] of Object.entries(parsed)) {
+      if (typeof hex === "string" && /^#[0-9a-fA-F]{6}$/.test(hex)) {
+        out[name.startsWith("#") ? name.toLowerCase() : name] = hex.toLowerCase();
+      }
+    }
+    return out;
+  } catch (_) {
+    return {};
+  }
+}
+
+function saveCustomPalette(palette) {
+  localStorage.setItem(LS_CUSTOM_PALETTE, JSON.stringify(palette));
+}
+
+function mergedPalette(basePalette) {
+  return { ...(basePalette || {}), ...loadCustomPalette() };
+}
+
+function activeColorName() {
+  if (state.draft && !state.draft.committed) return state.draft.color;
+  const id = state.focusId ?? state.pendingNote?.id;
+  if (id != null && state.annotations.has(id)) {
+    return state.annotations.get(id).color;
+  }
+  return state.color;
+}
+
+function updatePaletteSelection(name) {
+  paletteEl?.querySelectorAll(".swatch[data-color]").forEach((swatch) => {
+    swatch.setAttribute(
+      "aria-checked",
+      swatch.dataset.color === name ? "true" : "false",
+    );
+  });
+}
+
+function setCommentChromeColor(hex) {
+  if (commentEditorEl) commentEditorEl.style.setProperty("--comment-color", hex);
+  const id = state.focusId ?? state.pendingNote?.id;
+  if (id != null) {
+    commentsListEl
+      .querySelector(`.comment-card[data-id="${id}"]`)
+      ?.style.setProperty("--comment-color", hex);
+  }
+  if (state.draft && !state.draft.committed) {
+    commentsListEl
+      .querySelector(".comment-card.draft")
+      ?.style.setProperty("--comment-color", hex);
+  }
+}
+
+async function applyPaletteColor(name) {
+  state.color = name;
+  updatePaletteSelection(name);
+  if (state.draft && !state.draft.committed) {
+    state.draft.color = name;
+    const meta = pageMeta(state.draft.pageIndex);
+    if (meta) renderDraftOverlay(meta, state.draft.rects);
+    setCommentChromeColor(colorHex(name));
+    return;
+  }
+  const id = state.focusId ?? state.pendingNote?.id;
+  if (id != null && state.annotations.has(id)) {
+    const updated = await patchAnnotation(id, { color: name }, { quiet: true });
+    setCommentChromeColor(updated.hex);
+    updatePaletteSelection(updated.color);
+  }
+}
+
 function buildPalette(palette) {
+  const merged = mergedPalette(palette);
+  const current = activeColorName();
   paletteEl.innerHTML = "";
-  for (const [name, hex] of Object.entries(palette)) {
+  for (const [name, hex] of Object.entries(merged)) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "swatch";
+    btn.dataset.color = name;
     btn.style.background = hex;
-    btn.title = name;
+    btn.title = name.startsWith("#") ? `Custom ${name}` : name;
     btn.setAttribute("role", "radio");
-    btn.setAttribute("aria-checked", name === state.color ? "true" : "false");
+    btn.setAttribute("aria-checked", name === current ? "true" : "false");
     btn.addEventListener("click", () => {
-      state.color = name;
-      paletteEl.querySelectorAll(".swatch").forEach((s) =>
-        s.setAttribute("aria-checked", s === btn ? "true" : "false"));
-      if (state.draft && !state.draft.committed) {
-        state.draft.color = name;
-        renderDraftOverlay(pageMeta(state.draft.pageIndex), state.draft.rects);
-      } else if (state.focusId) {
-        patchAnnotation(state.focusId, { color: name });
-      }
+      void applyPaletteColor(name);
     });
     paletteEl.appendChild(btn);
   }
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "swatch swatch-add";
+  addBtn.title = "Add custom colour";
+  addBtn.setAttribute("aria-label", "Add custom colour");
+  addBtn.textContent = "+";
+
+  const colorInput = document.createElement("input");
+  colorInput.type = "color";
+  colorInput.className = "palette-color-input";
+  colorInput.value = "#7eb8ff";
+  addBtn.addEventListener("click", () => colorInput.click());
+  colorInput.addEventListener("change", () => {
+    const hex = (colorInput.value || "#7eb8ff").toLowerCase();
+    const custom = loadCustomPalette();
+    custom[hex] = hex;
+    saveCustomPalette(custom);
+    buildPalette(state.doc?.palette || {});
+    void applyPaletteColor(hex);
+  });
+
+  paletteEl.appendChild(addBtn);
+  paletteEl.appendChild(colorInput);
 }
 
 function spanRange(a, b) {
@@ -1992,7 +2089,9 @@ function pageMeta(pageIndex) {
 }
 
 function colorHex(name) {
-  return state.doc?.palette?.[name] || "#ffea3a";
+  if (!name) return "#ffea3a";
+  if (name.startsWith("#")) return name;
+  return mergedPalette(state.doc?.palette)[name] || "#ffea3a";
 }
 
 function paintRects(layer, rects, scale, hex, className) {
@@ -2158,9 +2257,13 @@ function focusAnnotation(id, {
   settleDraftSync();
   state.locateId = null;
   state.focusId = id;
+  const ann = state.annotations.get(id);
+  if (ann?.color) {
+    state.color = ann.color;
+    updatePaletteSelection(ann.color);
+  }
   renderAllHighlights();
   renderCommentsPane();
-  const ann = state.annotations.get(id);
   if (center && ann) centerAnnotation(ann, { behavior });
   if (scrollCard) {
     const card = commentsListEl.querySelector(`.comment-card[data-id="${id}"]`);
@@ -2410,14 +2513,19 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
   }));
   applyAnnotationUpdate(updated);
   renderHighlights(updated.page);
-  const editingThis = quiet && state.focusId === id && isCommentEditorActive();
-  if (!editingThis) {
+  const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
+  const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
+  if (colorOnly && editingThis) {
+    setCommentChromeColor(updated.hex);
+    updatePaletteSelection(updated.color);
+    await refreshPageBitmap(updated.page);
+  } else if (!quiet || !editingThis) {
     await refreshPageBitmap(updated.page);
     renderCommentsPane();
   }
   emergencyBackup();
   updateDocMeta();
-  if (!quiet) toast("Saved");
+  if (!quiet && !colorOnly) toast("Saved");
   return updated;
 }
 
@@ -2495,10 +2603,12 @@ function contextMenuItems(ann) {
     { label: "Copy comment", action: () => navigator.clipboard.writeText(ann.content || "") },
     { label: "Copy highlight text", action: () => copyHighlightText(ann) },
   ];
-  for (const [name] of Object.entries(state.doc.palette)) {
+  for (const [name] of Object.entries(mergedPalette(state.doc.palette))) {
     items.push({
-      label: `Colour · ${name}`,
-      action: () => patchAnnotation(ann.id, { color: name }),
+      label: `Colour · ${name.startsWith("#") ? name : name}`,
+      action: () => {
+        void applyPaletteColor(name);
+      },
     });
   }
   items.push({ sep: true });
@@ -2695,11 +2805,29 @@ async function reloadAnnotations() {
   mergeAnnotationsFromServer(list);
 }
 
+function registerAnnotationColors(list) {
+  const custom = loadCustomPalette();
+  let changed = false;
+  const known = mergedPalette(state.doc?.palette);
+  for (const ann of list) {
+    const color = ann.color;
+    if (typeof color === "string" && color.startsWith("#") && !known[color] && !custom[color]) {
+      custom[color] = (ann.hex || color).toLowerCase();
+      changed = true;
+    }
+  }
+  if (changed) {
+    saveCustomPalette(custom);
+    buildPalette(state.doc?.palette || {});
+  }
+}
+
 function mergeAnnotationsFromServer(list) {
   const prevFocus = state.focusId;
   const prevKey = prevFocus ? annotKey(state.annotations.get(prevFocus)) : null;
   const editingText = state.pendingNote?.ta?.value;
 
+  registerAnnotationColors(list);
   state.annotations.clear();
   for (const ann of list) {
     if (prevKey && annotKey(ann) === prevKey && editingText != null) {

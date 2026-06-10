@@ -46,7 +46,17 @@ def add(path: Path) -> list[Path]:
         encoding="utf-8",
     )
     note_system_recent(path)
+    _refresh_menu()
     return items
+
+
+def _refresh_menu() -> None:
+    try:
+        from peerfold.ui import refresh_application_menu_for_host
+
+        refresh_application_menu_for_host()
+    except Exception:
+        pass
 
 
 def note_system_recent(path: Path) -> None:

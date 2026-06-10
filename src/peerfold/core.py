@@ -50,11 +50,20 @@ MAX_BACKUPS = 12
 
 PALETTE: dict[str, tuple[float, float, float]] = {
     "yellow": (1.0, 0.92, 0.23),
+    "lime": (0.75, 0.92, 0.35),
     "green": (0.55, 0.76, 0.29),
+    "teal": (0.30, 0.78, 0.75),
+    "cyan": (0.40, 0.85, 0.95),
     "blue": (0.26, 0.65, 0.96),
+    "indigo": (0.45, 0.52, 0.95),
+    "purple": (0.68, 0.52, 0.92),
     "pink": (0.96, 0.56, 0.69),
+    "red": (0.95, 0.45, 0.45),
     "orange": (1.0, 0.72, 0.30),
+    "amber": (1.0, 0.82, 0.40),
+    "grey": (0.72, 0.72, 0.76),
 }
+_PALETTE_MATCH_EPS = 0.04
 LINE_Y_TOL = 4.0
 _BIB_LINE_RE = re.compile(r"^(\d+)\.\s+")
 _CITE_BRACKET_RE = re.compile(r"\[([^\]]+)\]")
@@ -351,9 +360,39 @@ def rgb_to_hex(rgb: tuple[float, float, float]) -> str:
     )
 
 
+def hex_to_rgb(hex_color: str) -> tuple[float, float, float]:
+    raw = hex_color.strip().lstrip("#")
+    if len(raw) != 6 or any(ch not in "0123456789abcdefABCDEF" for ch in raw):
+        raise ValueError(f"invalid hex color: {hex_color}")
+    return (
+        int(raw[0:2], 16) / 255.0,
+        int(raw[2:4], 16) / 255.0,
+        int(raw[4:6], 16) / 255.0,
+    )
+
+
+def _rgb_dist_sq(a: tuple[float, float, float], b: tuple[float, float, float]) -> float:
+    return sum((a[i] - b[i]) ** 2 for i in range(3))
+
+
+def resolve_color(color_name: str) -> tuple[str, tuple[float, float, float]]:
+    name = (color_name or "yellow").strip()
+    if name in PALETTE:
+        return name, PALETTE[name]
+    if name.startswith("#"):
+        try:
+            rgb = hex_to_rgb(name)
+            return name.lower(), rgb
+        except ValueError:
+            pass
+    return "yellow", PALETTE["yellow"]
+
+
 def nearest_palette_name(rgb: tuple[float, float, float]) -> str:
-    best = min(PALETTE, key=lambda k: sum((PALETTE[k][i] - rgb[i]) ** 2 for i in range(3)))
-    return best
+    best = min(PALETTE, key=lambda k: _rgb_dist_sq(PALETTE[k], rgb))
+    if _rgb_dist_sq(PALETTE[best], rgb) < _PALETTE_MATCH_EPS:
+        return best
+    return rgb_to_hex(rgb)
 
 
 def annot_fingerprint(ann: dict[str, Any]) -> tuple[Any, ...]:
@@ -477,7 +516,7 @@ class PdfSession:
             page = self.doc.load_page(int(da["page"]))
             quads = [self.fitz.Rect(*rect).quad for rect in da["rects"]]
             annot = page.add_highlight_annot(quads)
-            color = PALETTE.get(da["color"], PALETTE["yellow"])
+            _color_name, color = resolve_color(str(da.get("color") or "yellow"))
             annot.set_colors(stroke=color)
             annot.set_info(title=da.get("title") or self.reviewer, content=da.get("content") or "")
             annot.set_opacity(0.45)
@@ -747,7 +786,7 @@ class PdfSession:
     ) -> dict[str, Any]:
         if not content.strip():
             raise ValueError("comment cannot be empty")
-        color = PALETTE.get(color_name, PALETTE["yellow"])
+        color_name, color = resolve_color(color_name)
         with self.lock:
             spans_meta = self.page_spans(page_index)
             chosen = [spans_meta[i] for i in span_ids if 0 <= i < len(spans_meta)]
@@ -792,13 +831,13 @@ class PdfSession:
         rects: list[list[float]] | None = None,
     ) -> dict[str, Any]:
         info = annot.info
-        color = PALETTE.get(color_name, PALETTE["yellow"])
+        name, rgb = resolve_color(color_name)
         return {
             "id": annot.xref,
             "page": page_index,
             "rects": rects if rects is not None else self._rects_from_annot(annot),
-            "color": color_name,
-            "hex": rgb_to_hex(color),
+            "color": name,
+            "hex": rgb_to_hex(rgb),
             "content": info.get("content") or "",
             "title": info.get("title") or "",
         }
@@ -821,7 +860,8 @@ class PdfSession:
                 info = annot.info
                 annot.set_info(title=info.get("title") or self.reviewer, content=content)
             if color_name is not None:
-                annot.set_colors(stroke=PALETTE.get(color_name, PALETTE["yellow"]))
+                name, rgb = resolve_color(color_name)
+                annot.set_colors(stroke=rgb)
             annot.update()
             pno = page.number
             name = color_name
@@ -832,8 +872,10 @@ class PdfSession:
                     name = nearest_palette_name((float(stroke[0]), float(stroke[1]), float(stroke[2])))
                 else:
                     name = "yellow"
+            if name is not None:
+                name, _ = resolve_color(name)
             self._persist()
-            return self._annot_response(self._annot_dict(pno, annot, name))
+            return self._annot_response(self._annot_dict(pno, annot, name or "yellow"))
 
     def _resize_annotation(self, xref: int, span_ids: list[int]) -> dict[str, Any]:
         page, annot = self._find_annot(xref)
@@ -908,7 +950,7 @@ class PdfSession:
         rects = [list(r) for r in (snapshot.get("rects") or [])]
         if not rects:
             raise ValueError("no highlight geometry in snapshot")
-        color = PALETTE.get(color_name, PALETTE["yellow"])
+        color_name, color = resolve_color(color_name)
         page = self.doc.load_page(page_index)
         for ex in self._list_highlights_in_doc(self.doc):
             if ex["page"] == page_index and _annotation_overlaps_rects(ex["rects"], rects):
@@ -1499,7 +1541,6 @@ def run_server(
         WebviewUnavailableError,
         headless_environment,
         launch_web_ui,
-        open_webview_strict,
         webview_unavailable_help,
     )
 
@@ -1516,6 +1557,20 @@ def run_server(
             f"(expected {static / 'index.html'}). "
             "Run: python3 scripts/peerfold.py --update"
         )
+
+    if ui == "webview":
+        if headless_environment():
+            print(webview_unavailable_help(), file=sys.stderr)
+            raise SystemExit(1)
+        try:
+            from peerfold.app_host import run_webview_app
+
+            run_webview_app(pdf, reviewer=reviewer)
+        except WebviewUnavailableError as exc:
+            print(webview_unavailable_help(detail=str(exc)), file=sys.stderr)
+            raise SystemExit(1) from exc
+        return
+
     session = ServerSession(reviewer, pdf)
     chosen = pick_port(port)
     url = f"http://127.0.0.1:{chosen}/"
@@ -1533,10 +1588,6 @@ def run_server(
     print(f"Open: {url}")
     print_review_target(session)
 
-    if ui == "webview" and headless_environment():
-        print(webview_unavailable_help(url=url), file=sys.stderr)
-        raise SystemExit(1)
-
     if ui == "none":
         session._ready.wait()
         if session.loading_error:
@@ -1552,18 +1603,6 @@ def run_server(
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
-
-    if ui == "webview":
-        try:
-            open_webview_strict(url, title)
-        except WebviewUnavailableError as exc:
-            print(webview_unavailable_help(url=url, detail=str(exc)), file=sys.stderr)
-            raise SystemExit(1) from exc
-        finally:
-            server.shutdown()
-            server.server_close()
-            session.close()
-        return
 
     launch_web_ui(url)
     try:

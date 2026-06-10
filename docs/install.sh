@@ -13,6 +13,17 @@ if ! command -v curl >/dev/null 2>&1; then
   exit 1
 fi
 
+_peerfold_latest_tag() {
+  local api="https://api.github.com/repos/${REPO}/releases/latest"
+  local tag=""
+  if command -v python3 >/dev/null 2>&1; then
+    tag="$(curl -fsSL "${api}" | python3 -c 'import json,sys; print(json.load(sys.stdin).get("tag_name",""))' 2>/dev/null || true)"
+  else
+    tag="$(curl -fsSL "${api}" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1 || true)"
+  fi
+  printf '%s' "${tag}"
+}
+
 _peerfold_cleanup() {
   if [[ -n "${_PEERFOLD_MOUNT}" && -d "${_PEERFOLD_MOUNT}/PeerFold.app" ]]; then
     hdiutil detach "${_PEERFOLD_MOUNT}" -quiet 2>/dev/null || true
@@ -27,6 +38,8 @@ _peerfold_cleanup() {
 download_file() {
   local dest="$1"
   local url="$2"
+  local label="${3:-$(basename "${url}")}"
+  echo "Fetching ${label}…"
   if [[ -t 2 ]]; then
     curl -fL --progress-bar -o "${dest}" "${url}"
     echo ""
@@ -49,8 +62,14 @@ install_macos() {
   mkdir -p "${_PEERFOLD_MOUNT}"
   trap _peerfold_cleanup EXIT
 
+  local artifact="peerfold-macos.dmg"
+  local tag="$(_peerfold_latest_tag)"
+  local label="${artifact}"
+  if [[ -n "${tag}" ]]; then
+    label="${artifact} (${tag})"
+  fi
   echo "Downloading PeerFold for macOS…"
-  download_file "${_PEERFOLD_TMP}/peerfold.dmg" "${BASE_URL}/peerfold-macos.dmg"
+  download_file "${_PEERFOLD_TMP}/peerfold.dmg" "${BASE_URL}/${artifact}" "${label}"
 
   echo "Mounting disk image…"
   hdiutil attach -nobrowse -quiet -mountpoint "${_PEERFOLD_MOUNT}" "${_PEERFOLD_TMP}/peerfold.dmg"
@@ -69,7 +88,9 @@ install_macos() {
   dest="${apps_dir}/PeerFold.app"
   echo "Installing to ${dest}…"
   rm -rf "${dest}"
-  cp -R "${_PEERFOLD_MOUNT}/PeerFold.app" "${dest}"
+  ditto "${_PEERFOLD_MOUNT}/PeerFold.app" "${dest}"
+  touch "${dest}"
+  xattr -dr com.apple.quarantine "${dest}" 2>/dev/null || true
 
   echo "Unmounting disk image…"
   _peerfold_cleanup
@@ -78,6 +99,7 @@ install_macos() {
   echo "Registering PeerFold for PDF files…"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
     -f -trusted "${dest}"
+  touch "${dest}/Contents/Resources/PeerFold.icns" 2>/dev/null || true
 
   echo "Installed PeerFold to ${dest}"
   open -R "${dest}"
@@ -90,8 +112,14 @@ install_linux() {
   mkdir -p "${bin_dir}"
   dest="${bin_dir}/peerfold"
 
+  local artifact="peerfold-linux"
+  local tag="$(_peerfold_latest_tag)"
+  local label="${artifact}"
+  if [[ -n "${tag}" ]]; then
+    label="${artifact} (${tag})"
+  fi
   echo "Downloading PeerFold for Linux…"
-  download_file "${dest}" "${BASE_URL}/peerfold-linux"
+  download_file "${dest}" "${BASE_URL}/${artifact}" "${label}"
   chmod +x "${dest}"
 
   echo "Installed peerfold to ${dest}"

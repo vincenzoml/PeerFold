@@ -6,8 +6,13 @@ import json
 import os
 import subprocess
 import sys
+import threading
+from collections.abc import Callable
 from pathlib import Path
+from typing import Any, TypeVar
 from urllib.parse import urlparse
+
+T = TypeVar("T")
 
 from peerfold.icons import icon_png
 from peerfold.recent_files import add as add_recent_file
@@ -18,8 +23,160 @@ class WebviewUnavailableError(RuntimeError):
     """Native window could not be opened."""
 
 
+def run_on_main_thread(fn: Callable[[], None]) -> None:
+    """Schedule work on the AppKit main thread (pywebview menus run off-thread)."""
+    if threading.current_thread() is threading.main_thread():
+        fn()
+        return
+    if sys.platform == "darwin":
+        from PyObjCTools.AppHelper import callAfter
+
+        callAfter(fn)
+        return
+    fn()
+
+
+def run_on_main_thread_sync(fn: Callable[[], T]) -> T:
+    """Run on the AppKit main thread and return (for file dialogs)."""
+    if threading.current_thread() is threading.main_thread():
+        return fn()
+    if sys.platform != "darwin":
+        return fn()
+
+    import objc
+    from Foundation import NSObject
+
+    state: dict[str, Any] = {}
+
+    class Runner(NSObject):
+        def runOnMain_(self, _sender) -> None:
+            try:
+                state["result"] = fn()
+            except BaseException as exc:
+                state["error"] = exc
+
+    runner = Runner.alloc().init()
+    runner.performSelectorOnMainThread_withObject_waitUntilDone_(
+        objc.selector(runner.runOnMain_, signature=b"v@:@"),
+        None,
+        True,
+    )
+    if "error" in state:
+        raise state["error"]
+    return state["result"]
+
+
+def _escape_applescript_string(text: str) -> str:
+    return text.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def _osascript_dialog(title: str, body: str) -> None:
+    script = (
+        f'display alert "{_escape_applescript_string(title)}" '
+        f'message "{_escape_applescript_string(body)}" '
+        'buttons {"OK"} default button "OK"'
+    )
+    subprocess.run(["osascript", "-e", script], check=False)
+
+
+def show_native_message(title: str, body: str) -> None:
+    if sys.platform == "darwin":
+        _osascript_dialog(title, body)
+        return
+    import webview
+
+    win = webview.active_window()
+    if win is None and webview.windows:
+        win = webview.windows[0]
+    if win is not None:
+        win.create_confirmation_dialog(title, body)
+
+
+def show_about_dialog() -> None:
+    from peerfold import __version__
+
+    show_native_message(
+        f"PeerFold {__version__}",
+        "PDF review with standard highlight annotations.\n"
+        "https://vincenzoml.github.io/PeerFold/",
+    )
+
+
+def show_update_check_dialog(info: dict[str, Any]) -> None:
+    from peerfold import __version__
+
+    current = info.get("current") or __version__
+    if not info.get("check_ok"):
+        body = "Could not check for updates."
+    elif not info.get("update_available"):
+        body = f"PeerFold v{current} is up to date."
+    else:
+        latest = info.get("latest") or "?"
+        url = info.get("url") or ""
+        body = f"Update available: v{latest} (you have v{current})."
+        if url:
+            body += f"\n\n{url}"
+    show_native_message("PeerFold", body)
+
+
+class ApplicationMenuApi:
+    """Application menu actions (shared across document windows)."""
+
+    def __init__(self, host) -> None:
+        self._host = host
+
+    def menu_open(self) -> None:
+        run_on_main_thread(self._menu_open)
+
+    def _menu_open(self) -> None:
+        self._host.open_via_dialog()
+
+    def menu_new_window(self) -> None:
+        run_on_main_thread(self._menu_new_window)
+
+    def _menu_new_window(self) -> None:
+        self._host.open_empty_window()
+
+    def open_recent(self, path: str) -> None:
+        run_on_main_thread(lambda: self._open_recent_on_main(path))
+
+    def _open_recent_on_main(self, path: str) -> None:
+        pdf = Path(path).expanduser().resolve()
+        if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
+            return
+        api = self._host.api_for_active_window()
+        if api is not None and api._window is not None:
+            api._open_path(str(pdf))
+            return
+        self._host.open_document(pdf)
+
+    def menu_undo(self) -> None:
+        run_on_main_thread(self._menu_undo)
+
+    def _menu_undo(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_undo()
+
+    def menu_redo(self) -> None:
+        run_on_main_thread(self._menu_redo)
+
+    def _menu_redo(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_redo()
+
+    def check_for_updates(self) -> None:
+        from peerfold.core import update_check_payload
+
+        show_update_check_dialog(update_check_payload())
+
+    def show_about(self) -> None:
+        show_about_dialog()
+
+
 class PeerFoldApi:
-    """JS bridge for native file dialogs and application menus."""
+    """JS bridge for native file dialogs in the active document window."""
 
     def __init__(self) -> None:
         self._window = None
@@ -28,12 +185,11 @@ class PeerFoldApi:
         self._window = window
 
     def pick_pdf(self) -> str | None:
+        if not self._window:
+            return None
         import webview
 
-        windows = webview.windows
-        if not windows:
-            return None
-        result = windows[0].create_file_dialog(
+        result = self._window.create_file_dialog(
             webview.OPEN_DIALOG,
             allow_multiple=False,
             file_types=("PDF files (*.pdf)", "All files (*.*)"),
@@ -46,19 +202,11 @@ class PeerFoldApi:
     def open_url(self, url: str) -> None:
         open_url(url)
 
-    def menu_open(self) -> None:
-        path = self.pick_pdf()
-        if path:
-            self._open_path(path)
-
-    def open_recent(self, path: str) -> None:
-        self._open_path(path)
-
     def document_opened(self, path: str) -> None:
         resolved = Path(path).expanduser().resolve()
         if resolved.is_file():
             add_recent_file(resolved)
-            refresh_application_menu(self)
+            run_on_main_thread(refresh_application_menu_for_host)
 
     def menu_undo(self) -> None:
         self._dispatch("undo")
@@ -67,51 +215,50 @@ class PeerFoldApi:
         self._dispatch("redo")
 
     def check_for_updates(self) -> None:
-        self._dispatch("check-updates")
+        from peerfold.core import update_check_payload
+
+        show_update_check_dialog(update_check_payload())
 
     def show_about(self) -> None:
-        from peerfold import __version__
-
-        message = (
-            f"PeerFold {__version__}\n\n"
-            "PDF review with standard highlight annotations.\n\n"
-            "https://vincenzoml.github.io/PeerFold/"
-        )
-        if sys.platform == "darwin":
-            import AppKit
-
-            alert = AppKit.NSAlert.alloc().init()
-            alert.setMessageText_(f"PeerFold {__version__}")
-            alert.setInformativeText_(
-                "PDF review with standard highlight annotations.\n"
-                "https://vincenzoml.github.io/PeerFold/"
-            )
-            alert.addButtonWithTitle_("OK")
-            alert.runModal()
-            return
-        if self._window:
-            self._window.create_confirmation_dialog("About PeerFold", message)
+        show_about_dialog()
 
     def _dispatch(self, action: str) -> None:
         if not self._window:
             return
-        payload = json.dumps(action)
-        self._window.evaluate_js(
-            f'window.dispatchEvent(new CustomEvent("peerfold-menu", '
-            f"{{detail: {{action: {payload}}}}}))"
-        )
+
+        def emit() -> None:
+            payload = json.dumps(action)
+            self._window.evaluate_js(
+                f'window.dispatchEvent(new CustomEvent("peerfold-menu", '
+                f"{{detail: {{action: {payload}}}}}))"
+            )
+
+        run_on_main_thread(emit)
 
     def _open_path(self, path: str) -> None:
         if not self._window:
             return
-        payload = json.dumps(path)
-        self._window.evaluate_js(
-            f'window.dispatchEvent(new CustomEvent("peerfold-open-path", '
-            f"{{detail: {payload}}}))"
-        )
+
+        def emit() -> None:
+            payload = json.dumps(path)
+            self._window.evaluate_js(
+                f'window.dispatchEvent(new CustomEvent("peerfold-open-path", '
+                f"{{detail: {payload}}}))"
+            )
+
+        run_on_main_thread(emit)
 
 
-def build_application_menu(api: PeerFoldApi):
+def refresh_application_menu_for_host() -> None:
+    try:
+        from peerfold.app_host import AppHost
+
+        refresh_application_menu(AppHost.instance().menu_api)
+    except RuntimeError:
+        pass
+
+
+def build_application_menu(api: ApplicationMenuApi):
     from webview.menu import Menu, MenuAction, MenuSeparator
 
     recent_paths = list_recent_paths()
@@ -128,6 +275,7 @@ def build_application_menu(api: PeerFoldApi):
         "File",
         [
             MenuAction("Open…", api.menu_open),
+            MenuAction("New Window", api.menu_new_window),
             MenuSeparator(),
             Menu("Open Recent", recent_items),
         ],
@@ -137,6 +285,8 @@ def build_application_menu(api: PeerFoldApi):
         Menu(
             "__app__",
             [
+                MenuAction("About PeerFold", api.show_about),
+                MenuSeparator(),
                 MenuAction("Check for Updates…", api.check_for_updates),
             ],
         ),
@@ -151,10 +301,14 @@ def build_application_menu(api: PeerFoldApi):
     ]
 
 
-def refresh_application_menu(api: PeerFoldApi) -> None:
+def refresh_application_menu(api: ApplicationMenuApi) -> None:
+    run_on_main_thread(lambda: _refresh_application_menu_on_main(api))
+
+
+def _refresh_application_menu_on_main(api: ApplicationMenuApi) -> None:
     from peerfold.macos_menu import refresh_open_recent_menu
 
-    refresh_open_recent_menu(list_recent_paths(), api.open_recent)
+    refresh_open_recent_menu(list_recent_paths(), api._open_recent_on_main)
 
 
 def _set_application_icon() -> None:
@@ -265,7 +419,7 @@ def open_webview(url: str, title: str) -> None:
         except Exception:
             pass
 
-    webview.start(on_start, menu=build_application_menu(api), debug=False)
+    webview.start(on_start, debug=False)
 
 
 def open_webview_strict(url: str, title: str) -> None:

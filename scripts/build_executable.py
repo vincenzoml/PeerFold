@@ -32,6 +32,8 @@ def pyinstaller_extras() -> list[str]:
         "webview",
         "--collect-submodules",
         "webview",
+        "--hidden-import",
+        "certifi",
     ]
 
 

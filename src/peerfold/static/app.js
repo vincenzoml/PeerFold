@@ -227,6 +227,18 @@ function wireNativeDropPaths() {
       void openPdfByPath(path).catch((err) => toast(err.message || "Could not open PDF"));
     }
   });
+  window.addEventListener("peerfold-open-path", (ev) => {
+    const path = ev.detail;
+    if (path) {
+      void openPdfByPath(path).catch((err) => toast(err.message || "Could not open PDF"));
+    }
+  });
+  window.addEventListener("peerfold-menu", (ev) => {
+    const action = ev.detail?.action;
+    if (action === "undo") void performUndo();
+    else if (action === "redo") void performRedo();
+    else if (action === "check-updates") void checkForUpdates({ force: true });
+  });
 }
 
 async function nativePdfPickerAvailable() {
@@ -340,20 +352,45 @@ function toast(msg, ms = 2200) {
   toast._t = setTimeout(() => { toastEl.hidden = true; }, ms);
 }
 
-async function checkForUpdates() {
+async function openExternalUrl(url) {
+  if (window.pywebview?.api?.open_url) {
+    await window.pywebview.api.open_url(url);
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function setAppVersion(version) {
+  const el = $("#app-version");
+  if (el && version) el.textContent = `v${version}`;
+}
+
+async function checkForUpdates({ force = false } = {}) {
   try {
     const info = await api("/api/update-check");
-    if (!info.update_available || !info.latest) return;
+    const current = info.current || state.doc?.app_version || "?";
+    if (!info.check_ok) {
+      if (force) toast("Could not check for updates.", 3000);
+      return;
+    }
+    if (!info.update_available || !info.latest) {
+      if (force) toast(`PeerFold v${current} is up to date.`, 3500);
+      return;
+    }
     const dismissKey = `${LS_UPDATE_DISMISS}:${info.latest}`;
-    if (sessionStorage.getItem(dismissKey)) return;
-    sessionStorage.setItem(dismissKey, "1");
-    toastEl.textContent = `Update available: v${info.latest} — click to download`;
+    if (!force && sessionStorage.getItem(dismissKey)) return;
+
+    toastEl.textContent = `Update available: v${info.latest} (you have v${current}) — click to download`;
     toastEl.hidden = false;
     toastEl.classList.add("toast-update");
     toastEl.style.cursor = "pointer";
     toastEl.onclick = () => {
-      window.open(info.url, "_blank", "noopener,noreferrer");
+      void openExternalUrl(info.url);
+      sessionStorage.setItem(dismissKey, "1");
       toastEl.hidden = true;
+      toastEl.onclick = null;
+      toastEl.style.cursor = "";
+      toastEl.classList.remove("toast-update");
     };
     clearTimeout(toast._t);
     toast._t = setTimeout(() => {
@@ -361,9 +398,9 @@ async function checkForUpdates() {
       toastEl.onclick = null;
       toastEl.style.cursor = "";
       toastEl.classList.remove("toast-update");
-    }, 12000);
+    }, 15000);
   } catch (_) {
-    /* offline or check failed */
+    if (force) toast("Could not check for updates.", 3000);
   }
 }
 
@@ -2677,6 +2714,7 @@ async function syncDocFlags(doc) {
   state.fileMtime = doc.file_mtime ?? state.fileMtime;
   setServerRevision(doc.revision);
   if (!doc.unsaved) state.localDirty = false;
+  setAppVersion(doc.app_version);
   updateDocMeta();
 }
 
@@ -2878,6 +2916,7 @@ async function init() {
   state.doc = await waitForApp();
   setServerRevision(state.doc.revision ?? 0);
   $("#doc-name").textContent = state.doc.open ? state.doc.name : "PeerFold";
+  setAppVersion(state.doc.app_version);
   reviewerEl.value = state.doc.reviewer;
   updateDocMeta();
   populateReviewers();

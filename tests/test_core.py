@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from peerfold import __version__
 from peerfold.core import (
     annotated_path,
+    app_version,
     build_citation_index,
     cite_numbers_for_link,
     default_reviewer,
@@ -14,8 +16,10 @@ from peerfold.core import (
     pick_cite_for_click,
     sanitize_reviewer,
     save_copy_enabled,
+    ServerSession,
     session_paths,
     static_root,
+    update_check_payload,
     version_newer,
 )
 
@@ -103,6 +107,25 @@ def test_default_reviewer(monkeypatch):
     monkeypatch.delenv("REVIEW_VIEWER", raising=False)
     monkeypatch.setattr(getpass, "getuser", lambda: "vincenzo")
     assert default_reviewer() == "vincenzo"
+
+
+def test_app_version_matches_package():
+    assert app_version() == __version__
+
+
+def test_empty_document_includes_app_version():
+    session = ServerSession("VC", None)
+    info = session.document_info()
+    assert info["app_version"] == __version__
+
+
+def test_update_check_payload_shape():
+    payload = update_check_payload()
+    assert payload["current"] == __version__
+    assert "latest" in payload
+    assert "update_available" in payload
+    assert "check_ok" in payload
+    assert payload["url"].startswith("https://github.com/")
 
 
 def test_citation_helpers_on_sample_pdf():

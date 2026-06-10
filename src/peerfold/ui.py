@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -14,7 +15,13 @@ class WebviewUnavailableError(RuntimeError):
 
 
 class PeerFoldApi:
-    """JS bridge for native file dialogs (keeps review copies beside the original)."""
+    """JS bridge for native file dialogs and application menus."""
+
+    def __init__(self) -> None:
+        self._window = None
+
+    def set_window(self, window) -> None:
+        self._window = window
 
     def pick_pdf(self) -> str | None:
         import webview
@@ -31,6 +38,90 @@ class PeerFoldApi:
             return None
         path = result[0] if isinstance(result, (list, tuple)) else result
         return str(Path(path).expanduser().resolve())
+
+    def open_url(self, url: str) -> None:
+        open_url(url)
+
+    def menu_open(self) -> None:
+        path = self.pick_pdf()
+        if path:
+            self._open_path(path)
+
+    def menu_undo(self) -> None:
+        self._dispatch("undo")
+
+    def menu_redo(self) -> None:
+        self._dispatch("redo")
+
+    def check_for_updates(self) -> None:
+        self._dispatch("check-updates")
+
+    def show_about(self) -> None:
+        from peerfold import __version__
+
+        message = (
+            f"PeerFold {__version__}\n\n"
+            "PDF review with standard highlight annotations.\n\n"
+            "https://vincenzoml.github.io/PeerFold/"
+        )
+        if sys.platform == "darwin":
+            import AppKit
+
+            alert = AppKit.NSAlert.alloc().init()
+            alert.setMessageText_(f"PeerFold {__version__}")
+            alert.setInformativeText_(
+                "PDF review with standard highlight annotations.\n"
+                "https://vincenzoml.github.io/PeerFold/"
+            )
+            alert.addButtonWithTitle_("OK")
+            alert.runModal()
+            return
+        if self._window:
+            self._window.create_confirmation_dialog("About PeerFold", message)
+
+    def _dispatch(self, action: str) -> None:
+        if not self._window:
+            return
+        payload = json.dumps(action)
+        self._window.evaluate_js(
+            f'window.dispatchEvent(new CustomEvent("peerfold-menu", '
+            f"{{detail: {{action: {payload}}}}}))"
+        )
+
+    def _open_path(self, path: str) -> None:
+        if not self._window:
+            return
+        payload = json.dumps(path)
+        self._window.evaluate_js(
+            f'window.dispatchEvent(new CustomEvent("peerfold-open-path", '
+            f"{{detail: {payload}}}))"
+        )
+
+
+def build_application_menu(api: PeerFoldApi):
+    from webview.menu import Menu, MenuAction
+
+    return [
+        Menu(
+            "__app__",
+            [
+                MenuAction("Check for Updates…", api.check_for_updates),
+            ],
+        ),
+        Menu(
+            "File",
+            [
+                MenuAction("Open…", api.menu_open),
+            ],
+        ),
+        Menu(
+            "Help",
+            [
+                MenuAction("About PeerFold", api.show_about),
+                MenuAction("Check for Updates…", api.check_for_updates),
+            ],
+        ),
+    ]
 
 
 def ssh_session() -> bool:
@@ -109,6 +200,7 @@ def _bind_native_drop_paths(window) -> None:
 def open_webview(url: str, title: str) -> None:
     import webview
 
+    api = PeerFoldApi()
     window = webview.create_window(
         title,
         url,
@@ -117,8 +209,9 @@ def open_webview(url: str, title: str) -> None:
         min_size=(720, 480),
         background_color="#0c0c0e",
         text_select=True,
-        js_api=PeerFoldApi(),
+        js_api=api,
     )
+    api.set_window(window)
 
     def on_start() -> None:
         try:
@@ -126,7 +219,7 @@ def open_webview(url: str, title: str) -> None:
         except Exception:
             pass
 
-    webview.start(on_start, debug=False)
+    webview.start(on_start, menu=build_application_menu(api), debug=False)
 
 
 def open_webview_strict(url: str, title: str) -> None:

@@ -626,6 +626,7 @@ class PdfSession:
                 w, h = self._page_size(self.doc.load_page(pno))
                 page_sizes.append({"width": w, "height": h})
             return {
+                **app_metadata(),
                 "source": str(self.source),
                 "save_path": str(self.save_path),
                 "save_copy": save_copy_enabled(),
@@ -987,6 +988,7 @@ class ServerSession:
 
     def _empty_document_info(self) -> dict[str, Any]:
         return {
+            **app_metadata(),
             "open": False,
             "source": "",
             "save_path": "",
@@ -1393,6 +1395,16 @@ UPDATE_REPO = "vincenzoml/PeerFold"
 UPDATE_URL = f"https://github.com/{UPDATE_REPO}/releases/latest"
 
 
+def app_version() -> str:
+    from peerfold import __version__
+
+    return __version__
+
+
+def app_metadata() -> dict[str, str]:
+    return {"app_version": app_version()}
+
+
 def parse_version_parts(version: str) -> tuple[int, ...]:
     parts: list[int] = []
     for piece in version.lstrip("v").split("."):
@@ -1410,6 +1422,17 @@ def version_newer(latest: str, current: str) -> bool:
     return parse_version_parts(latest) > parse_version_parts(current)
 
 
+def _github_ssl_context():
+    import ssl
+
+    try:
+        import certifi
+
+        return ssl.create_default_context(cafile=certifi.where())
+    except ImportError:
+        return ssl.create_default_context()
+
+
 def fetch_latest_release_version() -> str | None:
     import json
     from urllib.error import URLError
@@ -1423,7 +1446,7 @@ def fetch_latest_release_version() -> str | None:
                 "User-Agent": "PeerFold",
             },
         )
-        with urlopen(req, timeout=4) as resp:
+        with urlopen(req, timeout=8, context=_github_ssl_context()) as resp:
             data = json.loads(resp.read().decode("utf-8"))
         tag = str(data.get("tag_name", "")).lstrip("v")
         return tag or None
@@ -1432,9 +1455,7 @@ def fetch_latest_release_version() -> str | None:
 
 
 def update_check_payload() -> dict[str, Any]:
-    from peerfold import __version__
-
-    current = __version__
+    current = app_version()
     latest = fetch_latest_release_version()
     available = bool(latest and version_newer(latest, current))
     return {
@@ -1442,6 +1463,7 @@ def update_check_payload() -> dict[str, Any]:
         "latest": latest,
         "update_available": available,
         "url": UPDATE_URL,
+        "check_ok": latest is not None,
     }
 
 

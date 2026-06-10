@@ -23,6 +23,7 @@ def macos_bundle_plist_extras() -> dict[str, object]:
         "CFBundleDocumentTypes": [MACOS_PDF_DOCUMENT_TYPE],
         "CFBundleInfoDictionaryVersion": "6.0",
         "LSSupportsOpeningDocumentsInPlace": True,
+        "NSHumanReadableCopyright": "Copyright © 2026 PeerFold. MIT License.",
     }
 
 

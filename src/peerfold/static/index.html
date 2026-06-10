@@ -15,11 +15,15 @@
       <img class="brand-mark" src="/static/icon-32.png" width="20" height="20" alt="">
       <div class="brand-text">
         <strong id="doc-name">PeerFold</strong>
-        <span id="app-version" class="app-version muted"></span>
+        <div id="version-strip" class="version-strip" aria-live="polite">
+          <span id="app-version-current" class="app-version muted"></span>
+          <span id="app-version-available" class="app-version-available muted" hidden></span>
+        </div>
         <span id="doc-meta" class="muted"></span>
       </div>
     </div>
     <div class="topbar-actions">
+      <button id="update-btn" type="button" class="btn btn-update primary" hidden>Update</button>
       <button id="open-pdf-btn" type="button" class="btn" title="Open PDF (⌘O)">Open…</button>
       <label class="reviewer-field">
         <span>Reviewer</span>

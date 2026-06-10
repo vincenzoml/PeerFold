@@ -82,6 +82,40 @@ def _osascript_dialog(title: str, body: str) -> None:
     subprocess.run(["osascript", "-e", script], check=False)
 
 
+def show_native_confirm(
+    title: str,
+    body: str,
+    *,
+    primary: str = "OK",
+    secondary: str = "Cancel",
+) -> bool:
+    if sys.platform == "darwin":
+        script = (
+            f'set response to display alert "{_escape_applescript_string(title)}" '
+            f'message "{_escape_applescript_string(body)}" '
+            f'buttons {{"{_escape_applescript_string(secondary)}", '
+            f'"{_escape_applescript_string(primary)}"}} '
+            f'default button "{_escape_applescript_string(primary)}" '
+            f'cancel button "{_escape_applescript_string(secondary)}"\n'
+            "return button returned of response"
+        )
+        result = subprocess.run(
+            ["osascript", "-e", script],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        return result.stdout.strip() == primary
+    import webview
+
+    win = webview.active_window()
+    if win is None and webview.windows:
+        win = webview.windows[0]
+    if win is not None:
+        return bool(win.create_confirmation_dialog(title, body))
+    return False
+
+
 def show_native_message(title: str, body: str) -> None:
     if sys.platform == "darwin":
         _osascript_dialog(title, body)
@@ -110,19 +144,41 @@ def show_update_check_dialog(info: dict[str, Any]) -> None:
 
     current = info.get("current") or __version__
     if not info.get("check_ok"):
-        body = "Could not check for updates."
-    elif not info.get("update_available"):
-        latest = info.get("latest")
-        if latest and latest != current:
-            body = f"PeerFold v{current} is up to date (latest release: v{latest})."
-        else:
-            body = f"PeerFold v{current} is up to date."
-    else:
+        show_native_message("PeerFold", "Could not check for updates.")
+        return
+    if info.get("update_available"):
         latest = info.get("latest") or "?"
-        url = info.get("url") or ""
+        if info.get("can_install") and show_native_confirm(
+            "PeerFold",
+            f"Update available: v{latest} (you have v{current}).",
+            primary="Install",
+            secondary="Later",
+        ):
+            from peerfold.updater import install_latest_update, relaunch_after_update
+
+            try:
+                result = install_latest_update()
+            except Exception as exc:
+                show_native_message("PeerFold", str(exc))
+                return
+            if result.get("ok"):
+                show_native_message("PeerFold", str(result.get("message") or "Update installed."))
+                if result.get("relaunch"):
+                    relaunch_after_update()
+            else:
+                show_native_message("PeerFold", str(result.get("error") or "Update failed."))
+            return
         body = f"Update available: v{latest} (you have v{current})."
+        url = info.get("download_url") or info.get("url") or ""
         if url:
             body += f"\n\n{url}"
+        show_native_message("PeerFold", body)
+        return
+    latest = info.get("latest")
+    if latest and latest != current:
+        body = f"PeerFold v{current} is up to date (latest release: v{latest})."
+    else:
+        body = f"PeerFold v{current} is up to date."
     show_native_message("PeerFold", body)
 
 
@@ -212,6 +268,17 @@ class PeerFoldApi:
 
     def open_url(self, url: str) -> None:
         open_url(url)
+
+    def install_update(self) -> dict[str, Any]:
+        from peerfold.updater import install_latest_update, relaunch_after_update
+
+        try:
+            result = install_latest_update()
+        except Exception as exc:
+            return {"ok": False, "error": str(exc)}
+        if result.get("ok") and result.get("relaunch"):
+            run_on_main_thread(relaunch_after_update)
+        return result
 
     def document_opened(self, path: str) -> None:
         resolved = Path(path).expanduser().resolve()

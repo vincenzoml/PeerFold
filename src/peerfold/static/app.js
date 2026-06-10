@@ -49,6 +49,7 @@ const state = {
   viewerNavBound: false,
   navReplaceTimer: null,
   navRestoring: false,
+  updateInfo: null,
 };
 
 const syncChannel = typeof BroadcastChannel !== "undefined"
@@ -82,7 +83,6 @@ const LS_COMMENTS_COLLAPSED = "peerfold-comments-collapsed";
 
 const LINE_Y_TOL = 4;
 const DRAG_THRESHOLD = 4;
-const LS_UPDATE_DISMISS = "peerfold-update-dismiss";
 const LS_CUSTOM_PALETTE = "peerfold-custom-palette";
 const HISTORY_MAX = 80;
 const $ = (sel) => document.querySelector(sel);
@@ -101,6 +101,9 @@ const commentsClearSelectionEl = $("#comments-clear-selection");
 const zoomLabelEl = $("#zoom-label");
 const ctxMenu = $("#ctx-menu");
 const toastEl = $("#toast");
+const appVersionCurrentEl = $("#app-version-current");
+const appVersionAvailableEl = $("#app-version-available");
+const updateBtnEl = $("#update-btn");
 const commentEditorEl = $("#comment-editor");
 const commentEditorPanelEl = commentEditorEl?.querySelector(".comment-editor-panel");
 const commentEditorBackdropEl = commentEditorEl?.querySelector(".comment-editor-backdrop");
@@ -364,48 +367,102 @@ async function openExternalUrl(url) {
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-function setAppVersion(version) {
-  const el = $("#app-version");
-  if (el && version) el.textContent = `v${version}`;
+let updatePollTimer = null;
+
+function renderUpdateUi(info) {
+  if (info) state.updateInfo = info;
+  const current = info?.current || state.doc?.app_version || "?";
+  if (appVersionCurrentEl) appVersionCurrentEl.textContent = `v${current}`;
+
+  if (!info?.check_ok) {
+    if (appVersionAvailableEl) appVersionAvailableEl.hidden = true;
+    if (updateBtnEl) updateBtnEl.hidden = true;
+    return;
+  }
+
+  if (info.update_available && info.latest) {
+    if (appVersionAvailableEl) {
+      appVersionAvailableEl.textContent = `→ v${info.latest}`;
+      appVersionAvailableEl.hidden = false;
+    }
+    if (updateBtnEl) {
+      updateBtnEl.hidden = false;
+      updateBtnEl.disabled = false;
+      updateBtnEl.textContent = info.can_install ? "Update" : "Download";
+      updateBtnEl.title = info.can_install
+        ? `Install PeerFold v${info.latest}`
+        : `Download PeerFold v${info.latest}`;
+    }
+  } else {
+    if (appVersionAvailableEl) appVersionAvailableEl.hidden = true;
+    if (updateBtnEl) updateBtnEl.hidden = true;
+  }
+}
+
+async function refreshUpdateStatus() {
+  try {
+    const info = await api("/api/update-check");
+    renderUpdateUi(info);
+    return info;
+  } catch (_) {
+    renderUpdateUi({
+      current: state.doc?.app_version,
+      check_ok: false,
+      update_available: false,
+    });
+    return null;
+  }
+}
+
+async function startUpdate() {
+  const info = state.updateInfo;
+  if (!info?.update_available) return;
+  if (updateBtnEl) {
+    updateBtnEl.disabled = true;
+    updateBtnEl.textContent = "Updating…";
+  }
+  try {
+    if (window.pywebview?.api?.install_update && info.can_install) {
+      const result = await window.pywebview.api.install_update();
+      if (result?.ok) {
+        toast(result.message || "Update installed.", 6000);
+        return;
+      }
+      toast(result?.error || "Update failed.", 5000);
+    } else {
+      await openExternalUrl(info.download_url || info.url);
+    }
+  } catch (err) {
+    toast(err.message || "Update failed.", 5000);
+  } finally {
+    if (updateBtnEl) updateBtnEl.disabled = false;
+    void refreshUpdateStatus();
+  }
 }
 
 async function checkForUpdates({ force = false } = {}) {
-  try {
-    const info = await api("/api/update-check");
-    const current = info.current || state.doc?.app_version || "?";
-    if (!info.check_ok) {
-      if (force) toast("Could not check for updates.", 3000);
-      return;
-    }
-    if (!info.update_available || !info.latest) {
-      if (force) toast(`PeerFold v${current} is up to date.`, 3500);
-      return;
-    }
-    const dismissKey = `${LS_UPDATE_DISMISS}:${info.latest}`;
-    if (!force && sessionStorage.getItem(dismissKey)) return;
-
-    toastEl.textContent = `Update available: v${info.latest} (you have v${current}) — click to download`;
-    toastEl.hidden = false;
-    toastEl.classList.add("toast-update");
-    toastEl.style.cursor = "pointer";
-    toastEl.onclick = () => {
-      void openExternalUrl(info.url);
-      sessionStorage.setItem(dismissKey, "1");
-      toastEl.hidden = true;
-      toastEl.onclick = null;
-      toastEl.style.cursor = "";
-      toastEl.classList.remove("toast-update");
-    };
-    clearTimeout(toast._t);
-    toast._t = setTimeout(() => {
-      toastEl.hidden = true;
-      toastEl.onclick = null;
-      toastEl.style.cursor = "";
-      toastEl.classList.remove("toast-update");
-    }, 15000);
-  } catch (_) {
-    if (force) toast("Could not check for updates.", 3000);
+  const info = await refreshUpdateStatus();
+  if (!force) return;
+  if (!info?.check_ok) {
+    toast("Could not check for updates.", 3000);
+    return;
   }
+  if (info.update_available) {
+    toast(
+      info.can_install
+        ? `Update v${info.latest} ready — click Update in the top bar.`
+        : `Update v${info.latest} available — click Download in the top bar.`,
+      4000,
+    );
+    return;
+  }
+  toast(`PeerFold v${info.current} is up to date.`, 3500);
+}
+
+function scheduleUpdateChecks() {
+  void refreshUpdateStatus();
+  if (updatePollTimer) clearInterval(updatePollTimer);
+  updatePollTimer = setInterval(() => { void refreshUpdateStatus(); }, 30 * 60 * 1000);
 }
 
 function hideCtx() {
@@ -2991,7 +3048,7 @@ async function syncDocFlags(doc) {
   state.fileMtime = doc.file_mtime ?? state.fileMtime;
   setServerRevision(doc.revision);
   if (!doc.unsaved) state.localDirty = false;
-  setAppVersion(doc.app_version);
+  renderUpdateUi({ current: doc.app_version, check_ok: false });
   updateDocMeta();
 }
 
@@ -3193,7 +3250,8 @@ async function init() {
   state.doc = await waitForApp();
   setServerRevision(state.doc.revision ?? 0);
   $("#doc-name").textContent = state.doc.open ? state.doc.name : "PeerFold";
-  setAppVersion(state.doc.app_version);
+  renderUpdateUi({ current: state.doc.app_version, check_ok: false });
+  updateBtnEl?.addEventListener("click", () => { void startUpdate(); });
   reviewerEl.value = state.doc.reviewer;
   updateDocMeta();
   populateReviewers();
@@ -3283,7 +3341,10 @@ async function init() {
     };
   }
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") void pullServerState({ quiet: true });
+    if (document.visibilityState === "visible") {
+      void pullServerState({ quiet: true });
+      void refreshUpdateStatus();
+    }
   });
   wireViewerNavHistory();
   if (state.doc.open) {
@@ -3294,7 +3355,7 @@ async function init() {
   }
   startDiskSync();
   updateUndoRedoUi();
-  void checkForUpdates();
+  scheduleUpdateChecks();
   window.addEventListener("load", () => scheduleStubSync(), { once: true });
   window.addEventListener("pageshow", (ev) => {
     if (ev.persisted) scheduleStubSync();

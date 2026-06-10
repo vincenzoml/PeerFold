@@ -101,6 +101,32 @@ body {
   letter-spacing: 0.03em;
 }
 
+.version-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.app-version-available {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  white-space: nowrap;
+}
+
+.btn-update {
+  padding: 5px 12px;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.btn-update:not(:disabled):hover {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 40%, transparent);
+}
+
 .muted { color: var(--muted); font-size: 11px; }
 
 .topbar-actions {

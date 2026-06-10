@@ -130,6 +130,8 @@ def test_update_check_payload_shape():
     assert "latest" in payload
     assert "update_available" in payload
     assert "check_ok" in payload
+    assert "can_install" in payload
+    assert "download_url" in payload
     assert payload["url"].startswith("https://github.com/")
 
 

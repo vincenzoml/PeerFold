@@ -1500,15 +1500,21 @@ def fetch_latest_release_version() -> str | None:
 
 
 def update_check_payload() -> dict[str, Any]:
+    from peerfold.updater import install_support
+
     current = app_version()
     latest = fetch_latest_release_version()
     available = bool(latest and version_newer(latest, current))
+    support = install_support()
     return {
         "current": current,
         "latest": latest,
         "update_available": available,
         "url": UPDATE_URL,
         "check_ok": latest is not None,
+        "download_url": support.get("download_url"),
+        "can_install": bool(available and support.get("can_install")),
+        "install_mode": support.get("mode"),
     }
 
 

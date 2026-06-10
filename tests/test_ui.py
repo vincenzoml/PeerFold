@@ -43,7 +43,11 @@ def test_webview_help_mentions_web_flag():
     assert "--web" in msg
 
 
-def test_build_application_menu_has_file_and_help():
+def test_build_application_menu_has_file_and_help(monkeypatch, tmp_path):
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    monkeypatch.setattr("peerfold.ui.list_recent_paths", lambda: [pdf.resolve()])
+
     menu = build_application_menu(ApplicationMenuApi(_MenuHost()))
     titles = [item.title for item in menu]
     assert "File" in titles
@@ -55,6 +59,9 @@ def test_build_application_menu_has_file_and_help():
     sub_titles = [item.title for item in file_menu.items if hasattr(item, "title")]
     assert "Open Recent" in sub_titles
     assert "New Window" in sub_titles
+    recent_menu = next(item for item in file_menu.items if getattr(item, "title", None) == "Open Recent")
+    recent_titles = [item.title for item in recent_menu.items if hasattr(item, "title")]
+    assert "Clear Menu" in recent_titles
 
 
 def test_webview_help_ssh_port_forward(monkeypatch):
@@ -97,27 +104,18 @@ def test_application_menu_check_for_updates_shows_native_dialog(monkeypatch):
     assert shown
 
 
-def test_open_recent_opens_in_active_window(monkeypatch, tmp_path):
+def test_open_recent_spawns_new_window(monkeypatch, tmp_path):
     pdf = tmp_path / "recent.pdf"
     pdf.write_bytes(b"%PDF-1.4\n")
     opened = []
 
-    class _Api:
-        _window = object()
-
-        def _open_path(self, path):
-            opened.append(path)
-
     class _Host:
-        def api_for_active_window(self):
-            return _Api()
-
-        def open_document(self, _pdf):
-            opened.append("new-window")
+        def open_document(self, pdf_path):
+            opened.append(pdf_path)
 
     api = ApplicationMenuApi(_Host())
     api._open_recent_on_main(str(pdf))
-    assert opened == [str(pdf.resolve())]
+    assert opened == [pdf.resolve()]
 
 
 def test_show_about_dialog_does_not_raise(monkeypatch):

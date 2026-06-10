@@ -15,3 +15,4 @@ venv/
 *.tmp
 docs/demo_*.pdf
 .local-test
+.release-upload/

@@ -187,7 +187,8 @@ body {
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
   background: color-mix(in srgb, var(--surface-solid) 88%, transparent);
-  z-index: 19;
+  position: relative;
+  z-index: 70;
 }
 
 .toolbar-label {
@@ -998,11 +999,18 @@ body {
 
 .comment-editor-foot {
   flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   padding: 10px 18px 14px;
   font-size: 11px;
   line-height: 1.4;
   color: var(--muted);
   letter-spacing: 0.01em;
+}
+
+.comment-editor-foot-hint {
+  display: block;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -16,7 +16,10 @@ T = TypeVar("T")
 
 from peerfold.icons import icon_png
 from peerfold.recent_files import add as add_recent_file
+from peerfold.recent_files import clear as clear_recent_files
 from peerfold.recent_files import list_paths as list_recent_paths
+from peerfold.recent_files import menu_label as recent_menu_label
+from peerfold.recent_files import remove as remove_recent_file
 
 
 class WebviewUnavailableError(RuntimeError):
@@ -109,7 +112,11 @@ def show_update_check_dialog(info: dict[str, Any]) -> None:
     if not info.get("check_ok"):
         body = "Could not check for updates."
     elif not info.get("update_available"):
-        body = f"PeerFold v{current} is up to date."
+        latest = info.get("latest")
+        if latest and latest != current:
+            body = f"PeerFold v{current} is up to date (latest release: v{latest})."
+        else:
+            body = f"PeerFold v{current} is up to date."
     else:
         latest = info.get("latest") or "?"
         url = info.get("url") or ""
@@ -143,12 +150,16 @@ class ApplicationMenuApi:
     def _open_recent_on_main(self, path: str) -> None:
         pdf = Path(path).expanduser().resolve()
         if not pdf.is_file() or pdf.suffix.lower() != ".pdf":
-            return
-        api = self._host.api_for_active_window()
-        if api is not None and api._window is not None:
-            api._open_path(str(pdf))
+            remove_recent_file(pdf)
+            refresh_application_menu_for_host()
             return
         self._host.open_document(pdf)
+
+    def clear_recent(self) -> None:
+        run_on_main_thread(self._clear_recent)
+
+    def _clear_recent(self) -> None:
+        clear_recent_files()
 
     def menu_undo(self) -> None:
         run_on_main_thread(self._menu_undo)
@@ -266,8 +277,10 @@ def build_application_menu(api: ApplicationMenuApi):
     if recent_paths:
         for path in recent_paths:
             recent_items.append(
-                MenuAction(path.name, (lambda p=str(path): api.open_recent(p)))
+                MenuAction(recent_menu_label(path), (lambda p=str(path): api.open_recent(p)))
             )
+        recent_items.append(MenuSeparator())
+        recent_items.append(MenuAction("Clear Menu", api.clear_recent))
     else:
         recent_items.append(MenuAction("(Empty)", lambda: None))
 
@@ -308,7 +321,11 @@ def refresh_application_menu(api: ApplicationMenuApi) -> None:
 def _refresh_application_menu_on_main(api: ApplicationMenuApi) -> None:
     from peerfold.macos_menu import refresh_open_recent_menu
 
-    refresh_open_recent_menu(list_recent_paths(), api._open_recent_on_main)
+    refresh_open_recent_menu(
+        list_recent_paths(),
+        api._open_recent_on_main,
+        clear_handler=api._clear_recent,
+    )
 
 
 def _set_application_icon() -> None:

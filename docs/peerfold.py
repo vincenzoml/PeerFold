@@ -28,7 +28,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_DIR = Path(__file__).resolve().parent
 VENV = ROOT / ".venv-peerfold"
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.20"
+PEERFOLD_VERSION = "0.1.21"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 

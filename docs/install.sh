@@ -72,8 +72,10 @@ install_macos() {
   trap - EXIT
 
   echo "Installed PeerFold to ${dest}"
+  /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
+    -f -R -trusted "${dest}"
   open -R "${dest}"
-  echo "PeerFold is selected in Finder — double-click to open and choose your PDF."
+  echo "PeerFold is selected in Finder — use Open With on a PDF, or double-click the app."
 }
 
 install_linux() {
@@ -93,7 +95,25 @@ install_linux() {
       echo "Add to your shell profile: export PATH=\"${bin_dir}:\$PATH\""
       ;;
   esac
+  desktop_dir="${XDG_DATA_HOME:-${HOME}/.local/share}/applications"
+  mkdir -p "${desktop_dir}"
+  cat >"${desktop_dir}/peerfold.desktop" <<EOF
+[Desktop Entry]
+Type=Application
+Name=PeerFold
+GenericName=PDF Review
+Comment=Review PDFs with standard highlight annotations
+Exec=${dest} %f
+Terminal=false
+MimeType=application/pdf;
+Categories=Office;Viewer;
+EOF
+  chmod 644 "${desktop_dir}/peerfold.desktop"
+  if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database "${desktop_dir}" >/dev/null 2>&1 || true
+  fi
   echo "Run: peerfold manuscript.pdf --reviewer RB"
+  echo "PeerFold should appear in Open With for PDF files."
 }
 
 case "${OS}" in

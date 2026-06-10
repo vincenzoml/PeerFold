@@ -45,7 +45,21 @@ def main() -> None:
         help="Start server only; do not open a window",
     )
     ap.add_argument("--version", action="version", version=f"peerfold {__version__}")
+    ap.add_argument(
+        "--register",
+        action="store_true",
+        help="Register PeerFold in Open With for PDF files (macOS app, Linux, Windows)",
+    )
     args = ap.parse_args()
+
+    if args.register:
+        from peerfold.handlers import register_pdf_handler
+
+        try:
+            print(register_pdf_handler())
+        except RuntimeError as exc:
+            raise SystemExit(str(exc)) from exc
+        return
 
     if args.no_browser:
         mode = "none"

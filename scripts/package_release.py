@@ -7,6 +7,7 @@ import io
 import plistlib
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -36,6 +37,11 @@ exec "${RUN}" "$@"
 LAUNCHER = """#!/bin/bash
 DIR="$(cd "$(dirname "$0")/../Resources/runtime" && pwd)"
 RUN="${DIR}/__BINARY__"
+if [[ $# -eq 0 ]]; then
+  PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
+  [[ -z "${PDF}" ]] && exit 0
+  exec "${RUN}" "${PDF}"
+fi
 exec "${RUN}" "$@"
 """
 
@@ -86,6 +92,9 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
     launcher.write_text(LAUNCHER.replace("__BINARY__", name), encoding="utf-8")
     launcher.chmod(0o755)
 
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+    from peerfold.handlers import macos_bundle_plist_extras
+
     plist = {
         "CFBundleExecutable": "peerfold",
         "CFBundleIdentifier": "io.peerfold.app",
@@ -96,6 +105,7 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
         "CFBundleVersion": version,
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
+        **macos_bundle_plist_extras(),
     }
     with (output / "Contents" / "Info.plist").open("wb") as fh:
         plistlib.dump(plist, fh)

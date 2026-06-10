@@ -1043,6 +1043,9 @@ class ServerSession:
         self._ready.wait()
         if self._error is not None:
             raise self._error
+        from peerfold.recent_files import add
+
+        add(source)
         return self.document_info()
 
     def set_reviewer(self, reviewer: str) -> None:

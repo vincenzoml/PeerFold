@@ -9,6 +9,10 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse
 
+from peerfold.icons import icon_png
+from peerfold.recent_files import add as add_recent_file
+from peerfold.recent_files import list_paths as list_recent_paths
+
 
 class WebviewUnavailableError(RuntimeError):
     """Native window could not be opened."""
@@ -46,6 +50,15 @@ class PeerFoldApi:
         path = self.pick_pdf()
         if path:
             self._open_path(path)
+
+    def open_recent(self, path: str) -> None:
+        self._open_path(path)
+
+    def document_opened(self, path: str) -> None:
+        resolved = Path(path).expanduser().resolve()
+        if resolved.is_file():
+            add_recent_file(resolved)
+            refresh_application_menu(self)
 
     def menu_undo(self) -> None:
         self._dispatch("undo")
@@ -99,7 +112,26 @@ class PeerFoldApi:
 
 
 def build_application_menu(api: PeerFoldApi):
-    from webview.menu import Menu, MenuAction
+    from webview.menu import Menu, MenuAction, MenuSeparator
+
+    recent_paths = list_recent_paths()
+    recent_items: list = []
+    if recent_paths:
+        for path in recent_paths:
+            recent_items.append(
+                MenuAction(path.name, (lambda p=str(path): api.open_recent(p)))
+            )
+    else:
+        recent_items.append(MenuAction("(Empty)", lambda: None))
+
+    file_menu = Menu(
+        "File",
+        [
+            MenuAction("Open…", api.menu_open),
+            MenuSeparator(),
+            Menu("Open Recent", recent_items),
+        ],
+    )
 
     return [
         Menu(
@@ -108,12 +140,7 @@ def build_application_menu(api: PeerFoldApi):
                 MenuAction("Check for Updates…", api.check_for_updates),
             ],
         ),
-        Menu(
-            "File",
-            [
-                MenuAction("Open…", api.menu_open),
-            ],
-        ),
+        file_menu,
         Menu(
             "Help",
             [
@@ -122,6 +149,25 @@ def build_application_menu(api: PeerFoldApi):
             ],
         ),
     ]
+
+
+def refresh_application_menu(api: PeerFoldApi) -> None:
+    from peerfold.macos_menu import refresh_open_recent_menu
+
+    refresh_open_recent_menu(list_recent_paths(), api.open_recent)
+
+
+def _set_application_icon() -> None:
+    if sys.platform != "darwin":
+        return
+    try:
+        import AppKit
+
+        image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icon_png(512)))
+        if image is not None:
+            AppKit.NSApplication.sharedApplication().setApplicationIconImage_(image)
+    except Exception:
+        pass
 
 
 def ssh_session() -> bool:
@@ -174,8 +220,6 @@ def webview_unavailable_help(*, url: str | None = None, detail: str | None = Non
 
 def _bind_native_drop_paths(window) -> None:
     """Forward full paths from native drag-drop (macOS/Linux GTK/Qt) to the UI."""
-    import json
-
     from webview.dom import DOMEventHandler
 
     def on_drop(event: dict) -> None:
@@ -215,7 +259,9 @@ def open_webview(url: str, title: str) -> None:
 
     def on_start() -> None:
         try:
+            _set_application_icon()
             _bind_native_drop_paths(window)
+            refresh_application_menu(api)
         except Exception:
             pass
 

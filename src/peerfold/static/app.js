@@ -270,6 +270,9 @@ async function applyOpenDocument(doc) {
   clearCommentSelection();
   await syncDocFlags(doc);
   $("#doc-name").textContent = doc.open ? doc.name : "PeerFold";
+  if (doc.open && doc.source && window.pywebview?.api?.document_opened) {
+    void window.pywebview.api.document_opened(doc.source);
+  }
   reviewerEl.value = doc.reviewer;
   populateReviewers();
   buildPalette(doc.palette);
@@ -499,6 +502,29 @@ function settleDraftSync() {
   else clearDraft();
 }
 
+function editorIsOpen() {
+  return (
+    !commentEditorEl?.hidden
+    || (state.draft && !state.draft.committed)
+    || Boolean(state.pendingNote)
+    || Boolean(state.focusId)
+  );
+}
+
+async function dismissEditorFromViewerBackground() {
+  if (state.draft && !state.draft.committed) {
+    syncDraftTextFromEditor();
+    if (draftText()) await onDraftEditorInputSave();
+    else clearDraft();
+    return;
+  }
+  if (state.pendingNote || state.focusId) {
+    await dismissComment();
+    return;
+  }
+  if (!commentEditorEl?.hidden) closeCommentEditor();
+}
+
 document.addEventListener("click", (e) => {
   if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) hideCtx();
   if (!state.draft || state.draft.committed) return;
@@ -512,16 +538,33 @@ document.addEventListener("click", (e) => {
 });
 
 document.addEventListener("mousedown", (e) => {
+  if (e.button !== 0) return;
   if (e.target.closest("#comment-editor")) return;
   if (e.target.closest(".comment-card.draft")) return;
   if (e.target.closest(".comment-card:not(.draft)")) return;
-  if (e.target.closest("#viewer")) return;
+  if (e.target.closest(".highlight-group")) return;
+  if (e.target.closest(".pdf-link")) return;
+
+  const pageEl = e.target.closest(".page");
+  if (pageEl) {
+    const pageIndex = Number(pageEl.dataset.page);
+    const meta = pageMeta(pageIndex);
+    if (meta) {
+      const onText = spanIdAtClient(meta, pageIndex, e.clientX, e.clientY, { strict: true }) != null;
+      if (!onText && editorIsOpen()) {
+        e.preventDefault();
+        void dismissEditorFromViewerBackground();
+      }
+    }
+    return;
+  }
+
+  if (e.target.closest("#viewer") && editorIsOpen()) {
+    void dismissEditorFromViewerBackground();
+    return;
+  }
 
   if (state.pendingNote) {
-    const onActiveHighlight = e.target.closest(
-      `.highlight-group[data-id="${state.pendingNote.id}"]`,
-    );
-    if (onActiveHighlight) return;
     dismissComment().catch((err) => toast(err.message || "Could not save comment"));
   }
 });
@@ -660,7 +703,7 @@ function clientToPdf(meta, pageIndex, clientX, clientY) {
   };
 }
 
-function spanIdAtClient(meta, pageIndex, clientX, clientY) {
+function spanIdAtClient(meta, pageIndex, clientX, clientY, { strict = false } = {}) {
   const { x, y } = clientToPdf(meta, pageIndex, clientX, clientY);
   let bestId = null;
   let bestArea = Infinity;
@@ -674,6 +717,7 @@ function spanIdAtClient(meta, pageIndex, clientX, clientY) {
     }
   }
   if (bestId != null) return bestId;
+  if (strict) return null;
   let nearestId = meta.spans[0]?.id ?? null;
   let nearestDist = Infinity;
   for (const sp of meta.spans) {
@@ -2571,8 +2615,15 @@ function wireSelection(pageIndex, meta) {
     if (ev.button !== 0) return;
     if (ev.target.closest(".pdf-link")) return;
     if (ev.target.closest(".highlight-group")) return;
-    const anchorId = spanIdAtClient(meta, pageIndex, ev.clientX, ev.clientY);
-    if (anchorId == null) return;
+    const anchorId = spanIdAtClient(meta, pageIndex, ev.clientX, ev.clientY, { strict: true });
+    if (anchorId == null) {
+      if (editorIsOpen()) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        void dismissEditorFromViewerBackground();
+      }
+      return;
+    }
     ev.preventDefault();
     clearNativeSelection();
     settleDraftSync();

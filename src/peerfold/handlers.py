@@ -28,6 +28,13 @@ def macos_bundle_plist_extras() -> dict[str, object]:
 
 
 def _linux_desktop_entry(exec_path: Path) -> str:
+    icon_line = ""
+    try:
+        from peerfold.icons import icon_png
+
+        icon_line = f"Icon={icon_png(512)}"
+    except OSError:
+        icon_line = "Icon=application-pdf"
     return "\n".join(
         [
             "[Desktop Entry]",
@@ -36,6 +43,7 @@ def _linux_desktop_entry(exec_path: Path) -> str:
             "GenericName=PDF Review",
             "Comment=Review PDFs with standard highlight annotations",
             f"Exec={exec_path} %f",
+            icon_line,
             "Terminal=false",
             "MimeType=application/pdf;",
             "Categories=Office;Viewer;",

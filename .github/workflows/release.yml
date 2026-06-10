@@ -52,6 +52,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install ".[dev]" pyinstaller
+          if [ "${{ runner.os }}" = "macOS" ]; then
+            python scripts/build_icon.py
+          fi
           python scripts/build_executable.py --name ${{ matrix.name }}
 
       - name: Verify executable

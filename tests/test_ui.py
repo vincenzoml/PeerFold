@@ -30,6 +30,9 @@ def test_build_application_menu_has_file_and_help():
     titles = [item.title for item in menu]
     assert "File" in titles
     assert "Help" in titles
+    file_menu = next(item for item in menu if item.title == "File")
+    sub_titles = [item.title for item in file_menu.items if hasattr(item, "title")]
+    assert "Open Recent" in sub_titles
 
 
 def test_webview_help_ssh_port_forward(monkeypatch):

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PeerFold">
+  <rect width="512" height="512" rx="112" fill="#0c0c0e"/>
+  <path d="M128 88h216l104 104v272H128z" fill="#f5f5f7"/>
+  <path d="M344 88v104h104" fill="#d1d1d6"/>
+  <rect x="156" y="268" width="268" height="40" rx="8" fill="#7eb8ff" opacity="0.92"/>
+  <rect x="156" y="332" width="204" height="30" rx="7" fill="#7eb8ff" opacity="0.58"/>
+  <rect x="156" y="386" width="148" height="24" rx="6" fill="#7eb8ff" opacity="0.34"/>
+</svg>

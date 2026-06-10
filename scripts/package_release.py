@@ -142,6 +142,13 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
 
     _install_macos_launcher(macos, name)
 
+    resources = output / "Contents" / "Resources"
+    icns = Path(__file__).resolve().parents[1] / "assets" / "PeerFold.icns"
+    icon_file = None
+    if icns.is_file():
+        shutil.copy2(icns, resources / "PeerFold.icns")
+        icon_file = "PeerFold"
+
     plist = {
         "CFBundleExecutable": "peerfold",
         "CFBundleIdentifier": "io.peerfold.app",
@@ -154,6 +161,8 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
         "NSHighResolutionCapable": True,
         **_macos_bundle_plist_extras(),
     }
+    if icon_file:
+        plist["CFBundleIconFile"] = icon_file
     with (output / "Contents" / "Info.plist").open("wb") as fh:
         plistlib.dump(plist, fh)
     return output

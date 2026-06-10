@@ -3,11 +3,11 @@
 
 from __future__ import annotations
 
+import importlib.util
 import io
 import plistlib
 import shutil
 import subprocess
-import sys
 import tarfile
 from pathlib import Path
 
@@ -44,6 +44,17 @@ if [[ $# -eq 0 ]]; then
 fi
 exec "${RUN}" "$@"
 """
+
+
+def _macos_bundle_plist_extras() -> dict[str, object]:
+    """Load plist extras without importing the peerfold package (scripts/peerfold.py shadows it)."""
+    handlers_py = Path(__file__).resolve().parents[1] / "src" / "peerfold" / "handlers.py"
+    spec = importlib.util.spec_from_file_location("_peerfold_handlers", handlers_py)
+    if spec is None or spec.loader is None:
+        raise SystemExit(f"Cannot load {handlers_py}")
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod.macos_bundle_plist_extras()
 
 
 def read_version(root: Path) -> str:
@@ -92,9 +103,6 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
     launcher.write_text(LAUNCHER.replace("__BINARY__", name), encoding="utf-8")
     launcher.chmod(0o755)
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
-    from peerfold.handlers import macos_bundle_plist_extras
-
     plist = {
         "CFBundleExecutable": "peerfold",
         "CFBundleIdentifier": "io.peerfold.app",
@@ -105,7 +113,7 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
         "CFBundleVersion": version,
         "LSMinimumSystemVersion": "11.0",
         "NSHighResolutionCapable": True,
-        **macos_bundle_plist_extras(),
+        **_macos_bundle_plist_extras(),
     }
     with (output / "Contents" / "Info.plist").open("wb") as fh:
         plistlib.dump(plist, fh)

@@ -48,23 +48,72 @@ static void LaunchPeerFold(NSString *pdfPath) {
 
 @implementation AppDelegate
 
-- (BOOL)application:(NSApplication *)application openFile:(NSString *)filename {
-    if (!PathLooksLikePDF(filename)) {
-        return NO;
+- (void)cancelPendingPrompt {
+    [NSObject cancelPreviousPerformRequestsWithTarget:self
+                                             selector:@selector(promptForPDFIfNeeded)
+                                               object:nil];
+}
+
+- (void)openPDFPath:(NSString *)path {
+    if (!PathLooksLikePDF(path)) {
+        return;
     }
     self.opened = YES;
-    LaunchPeerFold(filename);
-    return YES;
+    [self cancelPendingPrompt];
+    LaunchPeerFold(path);
+}
+
+- (BOOL)application:(NSApplication *)application openFile:(NSString *)filename {
+    [self openPDFPath:filename];
+    return self.opened;
 }
 
 - (void)application:(NSApplication *)application openFiles:(NSArray<NSString *> *)filenames {
     for (NSString *filename in filenames) {
-        if (PathLooksLikePDF(filename)) {
-            self.opened = YES;
-            LaunchPeerFold(filename);
+        [self openPDFPath:filename];
+        if (self.opened) {
             return;
         }
     }
+}
+
+- (void)application:(NSApplication *)application openURLs:(NSArray<NSURL *> *)urls {
+    for (NSURL *url in urls) {
+        if (!url.isFileURL) {
+            continue;
+        }
+        [self openPDFPath:url.path];
+        if (self.opened) {
+            return;
+        }
+    }
+}
+
+- (void)handleOpenDocumentsEvent:(NSAppleEventDescriptor *)event
+                  withReplyEvent:(NSAppleEventDescriptor *)replyEvent {
+    NSAppleEventDescriptor *directObject = [event paramDescriptorForKeyword:keyDirectObject];
+    if (!directObject) {
+        return;
+    }
+    NSInteger count = directObject.numberOfItems;
+    for (NSInteger i = 1; i <= count; i++) {
+        NSAppleEventDescriptor *item = [directObject descriptorAtIndex:i];
+        NSURL *url = item.fileURLValue;
+        if (url.isFileURL) {
+            [self openPDFPath:url.path];
+            if (self.opened) {
+                return;
+            }
+        }
+    }
+}
+
+- (void)applicationWillFinishLaunching:(NSNotification *)notification {
+    [[NSAppleEventManager sharedAppleEventManager]
+        setEventHandler:self
+        andSelector:@selector(handleOpenDocumentsEvent:withReplyEvent:)
+        forEventClass:kCoreEventClass
+        andEventID:kAEOpenDocuments];
 }
 
 - (void)promptForPDF {
@@ -74,7 +123,7 @@ static void LaunchPeerFold(NSString *pdfPath) {
     panel.canChooseDirectories = NO;
     panel.allowsMultipleSelection = NO;
     panel.prompt = @"Open";
-    panel.message = @"Select a PDF to review";
+    panel.message = @"Choose a PDF to review";
     [panel beginWithCompletionHandler:^(NSModalResponse result) {
         if (result == NSModalResponseOK) {
             LaunchPeerFold(panel.URL.path);
@@ -83,41 +132,38 @@ static void LaunchPeerFold(NSString *pdfPath) {
     }];
 }
 
+- (void)promptForPDFIfNeeded {
+    if (!self.opened) {
+        [self promptForPDF];
+    }
+}
+
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
     NSArray<NSString *> *args = [[NSProcessInfo processInfo] arguments];
     for (NSUInteger i = 1; i < args.count; i++) {
-        NSString *arg = [args objectAtIndex:i];
-        if (PathLooksLikePDF(arg)) {
-            self.opened = YES;
-            LaunchPeerFold(arg);
+        [self openPDFPath:[args objectAtIndex:i]];
+        if (self.opened) {
             return;
         }
     }
-
-    __weak AppDelegate *weakSelf = self;
-    dispatch_after(
-        dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.2 * NSEC_PER_SEC)),
-        dispatch_get_main_queue(),
-        ^{
-            if (!weakSelf.opened) {
-                [weakSelf promptForPDF];
-            }
-        });
+    [self performSelector:@selector(promptForPDFIfNeeded) withObject:nil afterDelay:1.0];
 }
 
 @end
 
 int main(int argc, char *argv[]) {
     @autoreleasepool {
-        if (argc > 1 && PathLooksLikePDF([NSString stringWithUTF8String:argv[1]])) {
-            LaunchPeerFold([NSString stringWithUTF8String:argv[1]]);
+        if (argc > 1) {
+            NSString *path = [NSString stringWithUTF8String:argv[1]];
+            if (PathLooksLikePDF(path)) {
+                LaunchPeerFold(path);
+            }
         }
 
         NSApplication *app = [NSApplication sharedApplication];
         AppDelegate *delegate = [[AppDelegate alloc] init];
         app.delegate = delegate;
         [app setActivationPolicy:NSApplicationActivationPolicyRegular];
-        [app activateIgnoringOtherApps:YES];
         [app run];
     }
     return 0;

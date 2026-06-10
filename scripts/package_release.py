@@ -8,6 +8,7 @@ import io
 import plistlib
 import shutil
 import subprocess
+import sys
 import tarfile
 from pathlib import Path
 
@@ -44,6 +45,46 @@ if [[ $# -eq 0 ]]; then
 fi
 exec "${RUN}" "$@"
 """
+
+MACOS_LAUNCHER_SRC = Path(__file__).resolve().parent / "macos" / "peerfold_launcher.m"
+
+
+def _compile_macos_launcher(macos_dir: Path, binary_name: str) -> Path:
+    if not MACOS_LAUNCHER_SRC.is_file():
+        raise SystemExit(f"macOS launcher source missing: {MACOS_LAUNCHER_SRC}")
+    launcher = macos_dir / "peerfold"
+    source = MACOS_LAUNCHER_SRC.read_text(encoding="utf-8").replace("__BINARY__", binary_name)
+    src = macos_dir / "_peerfold_launcher.m"
+    src.write_text(source, encoding="utf-8")
+    try:
+        subprocess.run(
+            [
+                "clang",
+                "-fobjc-arc",
+                "-O2",
+                "-framework",
+                "Cocoa",
+                "-framework",
+                "UniformTypeIdentifiers",
+                "-o",
+                str(launcher),
+                str(src),
+            ],
+            check=True,
+        )
+    finally:
+        src.unlink(missing_ok=True)
+    launcher.chmod(0o755)
+    return launcher
+
+
+def _install_macos_launcher(macos_dir: Path, binary_name: str) -> None:
+    if sys.platform == "darwin" and shutil.which("clang"):
+        _compile_macos_launcher(macos_dir, binary_name)
+        return
+    launcher = macos_dir / "peerfold"
+    launcher.write_text(LAUNCHER.replace("__BINARY__", binary_name), encoding="utf-8")
+    launcher.chmod(0o755)
 
 
 def _macos_bundle_plist_extras() -> dict[str, object]:
@@ -99,9 +140,7 @@ def make_app_bundle(app_dir: Path, output: Path, name: str, version: str) -> Pat
     resources.mkdir(parents=True)
     shutil.copytree(app_dir, resources, dirs_exist_ok=True)
 
-    launcher = macos / "peerfold"
-    launcher.write_text(LAUNCHER.replace("__BINARY__", name), encoding="utf-8")
-    launcher.chmod(0o755)
+    _install_macos_launcher(macos, name)
 
     plist = {
         "CFBundleExecutable": "peerfold",

@@ -9,16 +9,21 @@ from pathlib import Path
 
 MACOS_PDF_DOCUMENT_TYPE: dict[str, object] = {
     "CFBundleTypeName": "PDF Document",
-    "CFBundleTypeRole": "Editor",
+    "CFBundleTypeRole": "Viewer",
     "CFBundleTypeExtensions": ["pdf"],
     "CFBundleTypeMIMETypes": ["application/pdf"],
     "LSItemContentTypes": ["com.adobe.pdf"],
     "LSHandlerRank": "Alternate",
+    "LSTypeIsPackage": False,
 }
 
 
 def macos_bundle_plist_extras() -> dict[str, object]:
-    return {"CFBundleDocumentTypes": [MACOS_PDF_DOCUMENT_TYPE]}
+    return {
+        "CFBundleDocumentTypes": [MACOS_PDF_DOCUMENT_TYPE],
+        "CFBundleInfoDictionaryVersion": "6.0",
+        "LSSupportsOpeningDocumentsInPlace": True,
+    }
 
 
 def _linux_desktop_entry(exec_path: Path) -> str:
@@ -81,7 +86,7 @@ def _register_macos() -> str:
     if not lsregister.is_file():
         raise RuntimeError("lsregister not found — is this macOS?")
     for app in apps:
-        subprocess.run([str(lsregister), "-f", "-R", "-trusted", str(app)], check=True)
+        subprocess.run([str(lsregister), "-f", "-trusted", str(app)], check=True)
     locations = ", ".join(str(app) for app in apps)
     return f"Registered {locations} for PDF open-with."
 

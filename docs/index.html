@@ -13,6 +13,7 @@
       --fg: #f5f5f7;
       --soft: #a1a1a6;
       --faint: #6e6e73;
+      --accent: #7eb8ff;
       --line: rgba(255, 255, 255, 0.08);
       --fill: rgba(255, 255, 255, 0.05);
       --mono: ui-monospace, "SF Mono", Menlo, monospace;
@@ -32,7 +33,6 @@
 
     .shell { max-width: 980px; margin: 0 auto; padding: 0 22px; }
 
-    /* nav */
     .nav {
       position: sticky;
       top: 0;
@@ -54,7 +54,6 @@
     .nav-brand { font-weight: 600; letter-spacing: -0.01em; }
     .nav-links { display: flex; gap: 24px; color: var(--soft); }
 
-    /* hero */
     .hero {
       text-align: center;
       padding: 72px 0 48px;
@@ -64,9 +63,11 @@
       line-height: 1.05;
       font-weight: 600;
       letter-spacing: -0.03em;
-      max-width: 12ch;
+      max-width: 14ch;
       margin: 0 auto;
     }
+    .hero-q { color: var(--fg); }
+    .hero-tag { color: var(--accent); }
     .hero .sub {
       margin: 20px auto 0;
       max-width: 28em;
@@ -76,9 +77,7 @@
       letter-spacing: 0.011em;
       color: var(--soft);
     }
-    .hero .sub + .sub { margin-top: 12px; font-size: 17px; color: var(--faint); }
 
-    /* screenshot */
     .visual {
       padding: 8px 0 88px;
     }
@@ -96,92 +95,32 @@
       height: auto;
     }
 
-    /* pillars */
-    .pillars {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 40px;
-      padding: 0 0 88px;
-      text-align: center;
-    }
-    @media (max-width: 734px) {
-      .pillars { grid-template-columns: 1fr; gap: 32px; text-align: left; }
-    }
-    .pillar h2 {
-      font-size: 19px;
-      line-height: 1.21053;
-      font-weight: 600;
-      letter-spacing: 0.012em;
-      margin-bottom: 8px;
-    }
-    .pillar p {
-      font-size: 14px;
-      line-height: 1.42859;
-      letter-spacing: -0.016em;
-      color: var(--soft);
-    }
-
-    /* install paths */
     .install {
       padding-bottom: 88px;
     }
-    .install-head {
-      text-align: center;
-      padding-bottom: 48px;
-    }
-    .install-head h2 {
-      font-size: 32px;
-      line-height: 1.125;
-      font-weight: 600;
-      letter-spacing: 0.004em;
-    }
-    .install-head p {
-      margin-top: 8px;
-      font-size: 17px;
-      color: var(--soft);
-    }
-    .paths {
+    .install-grid {
       display: grid;
-      gap: 32px;
-      max-width: 640px;
-      margin: 0 auto;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 16px;
     }
-    .path {
-      padding-top: 32px;
-      border-top: 1px solid var(--line);
+    @media (max-width: 734px) {
+      .install-grid { grid-template-columns: 1fr; }
     }
-    .path:first-child {
-      padding-top: 0;
-      border-top: none;
-    }
-    .path-tag {
-      font-size: 12px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--faint);
-      margin-bottom: 6px;
-    }
-    .path h3 {
-      font-size: 21px;
-      line-height: 1.19048;
-      font-weight: 600;
-      letter-spacing: 0.011em;
-      margin-bottom: 6px;
-    }
-    .path .when {
-      font-size: 15px;
-      color: var(--soft);
-      margin-bottom: 16px;
-    }
-    .path-steps {
-      display: grid;
+    .install-card {
+      display: flex;
+      flex-direction: column;
       gap: 12px;
+      padding: 20px;
+      border-radius: 16px;
+      background: var(--fill);
+      border: 1px solid var(--line);
     }
-    .step-label {
-      font-size: 13px;
-      color: var(--faint);
-      margin-bottom: -4px;
+    .install-card h2 {
+      font-size: 15px;
+      line-height: 1.2;
+      font-weight: 600;
+      letter-spacing: -0.01em;
+      color: var(--soft);
     }
     .copy-cmd {
       display: block;
@@ -192,12 +131,13 @@
       line-height: 1.5;
       letter-spacing: 0;
       color: var(--fg);
-      background: var(--fill);
+      background: rgba(0, 0, 0, 0.35);
       border: none;
       border-radius: 12px;
-      padding: 16px 18px;
+      padding: 14px 16px;
       cursor: pointer;
       transition: background 0.2s;
+      margin-top: auto;
     }
     .copy-cmd:hover { background: rgba(255, 255, 255, 0.08); }
     .copy-cmd:focus-visible {
@@ -213,24 +153,13 @@
     .copy-label {
       display: block;
       min-height: 1em;
-      margin-top: 10px;
+      margin-top: 8px;
       font-family: var(--sans);
       font-size: 12px;
       color: var(--soft);
       visibility: hidden;
     }
     .copy-cmd.is-copied .copy-label { visibility: visible; }
-    .path-after {
-      margin-top: 4px;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--faint);
-    }
-    .path-after code {
-      font-family: var(--mono);
-      font-size: 12px;
-      color: var(--soft);
-    }
 
     footer {
       border-top: 1px solid var(--line);
@@ -255,9 +184,11 @@
 
   <main>
     <section class="shell hero">
-      <h1>PDF review.<br>Click, type, done.</h1>
-      <p class="sub">Standard highlights in the file — any reader, any inbox.</p>
-      <p class="sub">One script in the repo keeps every co-author on the same version.</p>
+      <h1>
+        <span class="hero-q">PDF review?</span><br>
+        <span class="hero-tag">Click, type, done.</span>
+      </h1>
+      <p class="sub">Or drop it into your paper sources so every co-author can review — no install required.</p>
     </section>
 
     <section class="shell visual">
@@ -266,71 +197,38 @@
       </div>
     </section>
 
-    <section class="shell pillars">
-      <div class="pillar">
-        <h2>Light</h2>
-        <p>Small install. Opens instantly. No setup, no database.</p>
-      </div>
-      <div class="pillar">
-        <h2>Real PDFs</h2>
-        <p>Notes are ordinary highlights — send the file back as-is.</p>
-      </div>
-      <div class="pillar">
-        <h2>Fast</h2>
-        <p>Built only for taking review notes. Nothing else in the way.</p>
-      </div>
-    </section>
-
     <section class="shell install">
-      <div class="install-head">
-        <h2>Install</h2>
-        <p>Pick the one that matches your situation. Click a command to copy.</p>
-      </div>
-
-      <div class="paths">
-        <article class="path">
-          <div class="path-tag">Path 1</div>
-          <h3>Install the app</h3>
-          <p class="when">You want a native window on your own machine. No Python required.</p>
-          <div class="path-steps">
-            <p class="step-label">macOS or Linux</p>
-            <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
-              <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
-              <span class="copy-label" aria-live="polite"></span>
-            </button>
-            <p class="step-label">Windows</p>
-            <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
-              <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
-              <span class="copy-label" aria-live="polite"></span>
-            </button>
-          </div>
-          <p class="path-after">Then run <code>peerfold paper.pdf --reviewer AB</code></p>
-        </article>
-
-        <article class="path">
-          <div class="path-tag">Path 2</div>
-          <h3>Use Python</h3>
-          <p class="when">You already have Python 3.10+ and prefer pip — any OS, including over SSH.</p>
-          <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB">
-            <code>python3 -m pip install --user peerfold-review && peerfold paper.pdf --reviewer AB</code>
+      <div class="install-grid">
+        <article class="install-card">
+          <h2>macOS app</h2>
+          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
+            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
-          <p class="path-after">Remote server with no display: add <code>--web</code> to open in your browser.</p>
         </article>
 
-        <article class="path">
-          <div class="path-tag">Path 3</div>
-          <h3>Add to a paper repo</h3>
-          <p class="when">You share a git folder with co-authors and want everyone on the same pinned version.</p>
-          <p class="step-label">Once — from the project root</p>
+        <article class="install-card">
+          <h2>Linux app</h2>
+          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
+            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
+        </article>
+
+        <article class="install-card">
+          <h2>add to any folder</h2>
           <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore">
             <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
-          <p class="path-after">
-            Commit <code>scripts/peerfold.py</code>. Each time: <code>python3 scripts/peerfold.py paper.pdf</code><br>
-            New release: <code>python3 scripts/peerfold.py --update</code>, then commit the script again.
-          </p>
+        </article>
+
+        <article class="install-card">
+          <h2>install via python</h2>
+          <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review">
+            <code>python3 -m pip install --user peerfold-review</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
         </article>
       </div>
     </section>

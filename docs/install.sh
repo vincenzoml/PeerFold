@@ -51,6 +51,8 @@ install_macos() {
 
   echo "Downloading PeerFold for macOS…"
   download_file "${_PEERFOLD_TMP}/peerfold.dmg" "${BASE_URL}/peerfold-macos.dmg"
+
+  echo "Mounting disk image…"
   hdiutil attach -nobrowse -quiet -mountpoint "${_PEERFOLD_MOUNT}" "${_PEERFOLD_TMP}/peerfold.dmg"
 
   if [[ ! -d "${_PEERFOLD_MOUNT}/PeerFold.app" ]]; then
@@ -65,15 +67,19 @@ install_macos() {
     mkdir -p "${apps_dir}"
   fi
   dest="${apps_dir}/PeerFold.app"
+  echo "Installing to ${dest}…"
   rm -rf "${dest}"
   cp -R "${_PEERFOLD_MOUNT}/PeerFold.app" "${dest}"
 
+  echo "Unmounting disk image…"
   _peerfold_cleanup
   trap - EXIT
 
-  echo "Installed PeerFold to ${dest}"
+  echo "Registering PeerFold for PDF files…"
   /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister \
-    -f -R -trusted "${dest}"
+    -f -trusted "${dest}"
+
+  echo "Installed PeerFold to ${dest}"
   open -R "${dest}"
   echo "PeerFold is selected in Finder — use Open With on a PDF, or double-click the app."
 }

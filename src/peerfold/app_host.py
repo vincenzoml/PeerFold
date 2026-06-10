@@ -198,17 +198,24 @@ class AppHost:
                 _set_application_icon()
                 refresh_application_menu(self.menu_api)
                 if sys.platform == "darwin":
-                    from peerfold.macos_events import (
-                        install_dock_reopen_handler,
-                        install_open_documents_handler,
-                    )
+                    from peerfold.macos_events import install_open_documents_handler
 
                     install_open_documents_handler(self.open_document_path)
+            except Exception:
+                pass
+
+        def on_first_shown(_window=None) -> None:
+            self._started = True
+            try:
+                if sys.platform == "darwin":
+                    from peerfold.macos_events import install_dock_reopen_handler
+
                     install_dock_reopen_handler(self.open_empty_window)
             except Exception:
                 pass
 
-        self._started = True
+        first.window.events.shown += on_first_shown
+
         try:
             webview.start(
                 on_start,

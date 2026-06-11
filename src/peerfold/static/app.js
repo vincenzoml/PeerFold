@@ -1200,7 +1200,10 @@ async function applyPaletteColor(name, { ids = null } = {}) {
       for (const ann of updated) refreshAnnotationChrome(ann.id);
       const last = updated.at(-1);
       updatePaletteSelection(last?.color ?? name);
-      if (isCommentEditorOpen() && state.focusId != null) syncCommentEditor();
+      if (isCommentEditorOpen() && state.focusId != null) {
+        syncEditorPalette();
+        if (!isEditingCommentText()) syncCommentEditor();
+      }
     } catch (err) {
       toast(userFacingError(err, "Could not change colour"), 4000);
     }
@@ -1382,12 +1385,20 @@ function selectionForward(anchorSpan, focusSpan, anchorX, focusX) {
   return anchorX <= focusX;
 }
 
+function selectionEndpointX(x, span, edge) {
+  if (Number.isFinite(x)) return x;
+  if (!span) return 0;
+  return edge === "start" ? span.bbox[0] : span.bbox[2];
+}
+
 function clipSelectionRects(meta, spanIds, anchorId, focusId, anchorX, anchorY, focusX, focusY) {
   const chosen = spanIds.map((id) => meta.spans.find((s) => s.id === id)).filter(Boolean);
   if (!chosen.length) return [];
 
   const anchorSpan = meta.spans.find((s) => s.id === anchorId);
   const focusSpan = meta.spans.find((s) => s.id === focusId);
+  anchorX = selectionEndpointX(anchorX, anchorSpan, "start");
+  focusX = selectionEndpointX(focusX, focusSpan, "end");
   const ordered = [...chosen].sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   const lines = [];
   for (const sp of ordered) {
@@ -1482,6 +1493,8 @@ function textFromSelection(meta, spanIds, anchorId, focusId, anchorX, anchorY, f
 
   const anchorSpan = meta.spans.find((s) => s.id === anchorId);
   const focusSpan = meta.spans.find((s) => s.id === focusId);
+  anchorX = selectionEndpointX(anchorX, anchorSpan, "start");
+  focusX = selectionEndpointX(focusX, focusSpan, "end");
   const forward = selectionForward(anchorSpan, focusSpan, anchorX, focusX);
   const sameLine = anchorSpan && focusSpan
     && Math.abs(anchorSpan.bbox[1] - focusSpan.bbox[1]) <= LINE_Y_TOL;
@@ -1864,7 +1877,7 @@ function setPageTextHover(meta, pageIndex, clientX, clientY) {
 }
 
 function mergeLineRects(spans, spanIds) {
-  const chosen = spanIds.map((id) => spans[id]).filter(Boolean);
+  const chosen = spanIds.map((id) => spans.find((s) => s.id === id)).filter(Boolean);
   if (!chosen.length) return [];
   const ordered = [...chosen].sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   const lines = [];
@@ -2029,17 +2042,40 @@ function editorValueFor(ann) {
   return ann.content ?? "";
 }
 
+function isEditingCommentText() {
+  return Boolean(
+    commentEditorTa
+    && isCommentEditorOpen()
+    && document.activeElement === commentEditorTa,
+  );
+}
+
 function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
   if (!commentEditorEl || !commentEditorTa) return;
   if (mode === "draft") syncDraftTextFromEditor();
   const editorKey = mode === "draft" ? draftSelectionKey(state.draft) : String(state.focusId ?? title);
   const same = state.commentEditor?.mode === mode && state.commentEditor?.key === editorKey;
-  const keepTyping = same && document.activeElement === commentEditorTa;
-  const text = keepTyping
-    ? commentEditorTa.value
-    : (mode === "draft" ? (state.draft?.text ?? value ?? "") : (value ?? ""));
-  const selStart = keepTyping ? commentEditorTa.selectionStart : text.length;
-  const selEnd = keepTyping ? commentEditorTa.selectionEnd : text.length;
+  const keepTyping = same && isEditingCommentText();
+  if (keepTyping) {
+    const chromeColor = mode === "draft"
+      ? colorHex(state.draft?.color)
+      : annotationHex(state.annotations.get(state.focusId));
+    commentEditorEl.style.setProperty("--comment-color", chromeColor);
+    commentEditorTitleEl.textContent = title;
+    commentEditorMetaEl.textContent = meta;
+    commentEditorQuoteEl.textContent = quote;
+    syncCommentDeleteButton(mode);
+    for (const card of document.querySelectorAll(".comment-card.editor-open")) {
+      card.classList.remove("editor-open");
+    }
+    anchorCard?.classList.add("editor-open");
+    state.commentEditor = { mode, key: editorKey, anchorCard };
+    window.requestAnimationFrame(() => positionCommentEditor(anchorCard));
+    return commentEditorTa;
+  }
+  const text = mode === "draft" ? (state.draft?.text ?? value ?? "") : (value ?? "");
+  const selStart = text.length;
+  const selEnd = text.length;
 
   for (const card of document.querySelectorAll(".comment-card.editor-open")) {
     card.classList.remove("editor-open");
@@ -2094,6 +2130,14 @@ function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeh
 function syncCommentEditor() {
   if (state.draft && !state.draft.committed) {
     syncDraftTextFromEditor();
+    const draftKey = draftSelectionKey(state.draft);
+    if (
+      state.commentEditor?.mode === "draft"
+      && state.commentEditor?.key === draftKey
+      && isEditingCommentText()
+    ) {
+      return;
+    }
     let card = commentsListEl.querySelector(".comment-card.draft");
     if (!card) {
       renderCommentsPane();
@@ -2126,6 +2170,14 @@ function syncCommentEditor() {
   }
 
   if (state.focusId && state.annotations.has(state.focusId)) {
+    const editorKey = String(state.focusId);
+    if (
+      state.commentEditor?.mode === "ann"
+      && state.commentEditor?.key === editorKey
+      && isEditingCommentText()
+    ) {
+      return;
+    }
     const ann = state.annotations.get(state.focusId);
     const card = commentsListEl.querySelector(`.comment-card[data-id="${state.focusId}"]`);
     if (!card || !ann) {
@@ -2239,17 +2291,6 @@ function onDraftEditorKeydown(ev) {
     void settleDraft();
   }
 }
-
-commentEditorTa?.addEventListener("input", () => {
-  if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
-  autosizeCommentEditorTa();
-  if (!state.draft || state.draft.saving || !draftText()) return;
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = setTimeout(() => {
-    draftSaveTimer = null;
-    void onDraftEditorInputSave();
-  }, 400);
-});
 
 function focusDraftNote() {
   syncCommentEditor();
@@ -3695,9 +3736,11 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
     refreshAnnotationChrome(updated.id);
     updatePaletteSelection(updated.color);
     await refreshPageBitmap(updated.page);
-  } else if (!quiet || !editingThis) {
+  } else if (!editingThis) {
     await refreshPageBitmap(updated.page);
     renderCommentsPane();
+  } else if (!colorOnly) {
+    await refreshPageBitmap(updated.page);
   }
   emergencyBackup();
   updateDocMeta();
@@ -3961,6 +4004,8 @@ function wireSelection(pageIndex, meta) {
       focusId: anchorId,
       anchorX: anchorPt.x,
       anchorY: anchorPt.y,
+      focusX: anchorPt.x,
+      focusY: anchorPt.y,
       startX: ev.clientX,
       startY: ev.clientY,
     };

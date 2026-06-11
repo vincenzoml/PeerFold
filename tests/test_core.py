@@ -182,9 +182,11 @@ def test_batch_update_colors(tmp_path, monkeypatch):
     try:
         spans = session.page_spans(0)
         assert len(spans) >= 3
+        highlight_ids = [s["id"] for s in spans if s["text"] == "highlight"]
+        assert len(highlight_ids) == 3
         ids = []
-        for i in range(3):
-            created = session.create_highlight(0, [i], "yellow", f"note {i}")
+        for sid in highlight_ids:
+            created = session.create_highlight(0, [sid], "yellow", f"note {sid}")
             ids.append(created["id"])
         result = session.batch_update_colors(ids, "blue")
         assert len(result["items"]) == 3

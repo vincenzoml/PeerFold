@@ -695,16 +695,18 @@ class PdfSession:
         page = self.doc.load_page(page_index)
         spans: list[dict[str, Any]] = []
         sid = 0
-        for block in page.get_text("dict").get("blocks", []):
-            if block.get("type") != 0:
+        for entry in page.get_text("words", sort=True):
+            text = str(entry[4])
+            if not text.strip():
                 continue
-            for line in block.get("lines", []):
-                for span in line.get("spans", []):
-                    text = span.get("text", "")
-                    if not text.strip():
-                        continue
-                    spans.append({"id": sid, "text": text, "bbox": list(span["bbox"])})
-                    sid += 1
+            spans.append(
+                {
+                    "id": sid,
+                    "text": text,
+                    "bbox": [float(entry[0]), float(entry[1]), float(entry[2]), float(entry[3])],
+                }
+            )
+            sid += 1
         return spans
 
     def page_links(self, page_index: int) -> list[dict[str, Any]]:

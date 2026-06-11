@@ -980,6 +980,12 @@ body {
   flex-shrink: 0;
   accent-color: var(--accent);
   cursor: pointer;
+  pointer-events: auto;
+}
+
+.comment-pick:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
 
 .comment-meta-main {
@@ -1495,18 +1501,24 @@ body {
   left: 50%;
   bottom: 24px;
   transform: translateX(-50%);
-  padding: 10px 16px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--text) 92%, transparent);
-  color: #fff;
-  font-size: 12px;
+  padding: 11px 16px;
+  border-radius: 10px;
+  background: var(--surface-solid);
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 16%, var(--border));
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  max-width: min(92vw, 420px);
+  text-align: center;
   box-shadow: var(--shadow);
   z-index: 100;
   animation: toast-in 180ms ease;
 }
 
 .toast.toast-update:hover {
-  background: color-mix(in srgb, var(--accent) 28%, var(--text));
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
 }
 
 @keyframes toast-in {

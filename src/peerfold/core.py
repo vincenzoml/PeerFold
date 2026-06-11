@@ -780,6 +780,12 @@ class PdfSession:
                     return page, annot
         return None, None
 
+    def _require_annot(self, xref: int):
+        page, annot = self._find_annot(xref)
+        if annot is None:
+            raise ValueError(f"comment #{xref} not found in document")
+        return page, annot
+
     def list_annotations(self) -> list[dict[str, Any]]:
         with self.lock:
             return self._list_highlights_in_doc(self.doc)
@@ -895,9 +901,7 @@ class PdfSession:
         with self.lock:
             if span_ids is not None:
                 return self._resize_annotation(xref, span_ids)
-            page, annot = self._find_annot(xref)
-            if annot is None:
-                raise KeyError(xref)
+            page, annot = self._require_annot(xref)
             if content is not None:
                 info = annot.info
                 annot.set_info(title=info.get("title") or self.reviewer, content=content)
@@ -920,9 +924,7 @@ class PdfSession:
             return self._annot_response(self._annot_dict(pno, annot, name or "yellow"))
 
     def _resize_annotation(self, xref: int, span_ids: list[int]) -> dict[str, Any]:
-        page, annot = self._find_annot(xref)
-        if annot is None:
-            raise KeyError(xref)
+        page, annot = self._require_annot(xref)
         pno = page.number
         spans_meta = self.page_spans(pno)
         chosen = [spans_meta[i] for i in span_ids if 0 <= i < len(spans_meta)]
@@ -962,9 +964,7 @@ class PdfSession:
 
     def delete_annotation(self, xref: int) -> None:
         with self.lock:
-            page, annot = self._find_annot(xref)
-            if annot is None:
-                raise KeyError(xref)
+            page, annot = self._require_annot(xref)
             page.delete_annot(annot)
             self._persist()
             return self.revision
@@ -989,9 +989,7 @@ class PdfSession:
             name, rgb = resolve_color(color_name)
             items: list[dict[str, Any]] = []
             for xref in xrefs:
-                page, annot = self._find_annot(int(xref))
-                if annot is None:
-                    raise KeyError(xref)
+                page, annot = self._require_annot(int(xref))
                 annot.set_colors(stroke=rgb)
                 annot.update()
                 items.append(self._annot_dict(page.number, annot, name))

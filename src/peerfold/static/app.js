@@ -1,16 +1,19 @@
 const SPAN_PICK_MAX_DIST = 14;
-const DEV = true;
 let draftSaveTimer = null;
 let ctxSuppressCloseUntil = 0;
 
+function isDev() {
+  return Boolean(state?.doc?.dev);
+}
+
 function devLog(label, detail) {
-  if (!DEV) return;
+  if (!isDev()) return;
   if (detail === undefined) console.log("[peerfold]", label);
   else console.log("[peerfold]", label, detail);
 }
 
 function devWarn(label, detail) {
-  if (!DEV) return;
+  if (!isDev()) return;
   if (detail === undefined) console.warn("[peerfold]", label);
   else console.warn("[peerfold]", label, detail);
 }
@@ -157,7 +160,7 @@ async function api(path, opts = {}) {
     throw err;
   }
   if (!res.ok) {
-    if (DEV) devWarn("api error", { path, status: res.status, error: data.error || res.statusText, body: data });
+    if (isDev()) devWarn("api error", { path, status: res.status, error: data.error || res.statusText, body: data });
     throw new Error(data.error || res.statusText);
   }
   return data;
@@ -459,11 +462,20 @@ function wireOpenPdf() {
   }
 }
 
+function userFacingError(err, fallback = "Something went wrong") {
+  const msg = String(err?.message ?? err ?? "").trim();
+  if (!msg || /^\d+$/.test(msg)) return fallback;
+  return msg;
+}
+
 function toast(msg, ms = 2200) {
   toastEl.onclick = null;
   toastEl.style.cursor = "";
   toastEl.classList.remove("toast-update");
-  toastEl.textContent = msg;
+  const text = typeof msg === "string" ? msg : String(msg ?? "");
+  toastEl.textContent = /^\d+$/.test(text.trim()) ? "Something went wrong" : text;
+  toastEl.setAttribute("role", "status");
+  toastEl.setAttribute("aria-live", "polite");
   toastEl.hidden = false;
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toastEl.hidden = true; }, ms);
@@ -988,8 +1000,18 @@ function mergedPalette(basePalette) {
   return { ...(basePalette || {}), ...loadCustomPalette() };
 }
 
+function editingAnnotationId() {
+  if (!isCommentEditorOpen() || state.commentEditor?.mode === "draft") return null;
+  const id = state.focusId ?? state.pendingNote?.id;
+  return id != null && state.annotations.has(id) ? id : null;
+}
+
 function colorTargetIds() {
   if (state.draft && !state.draft.committed) return { kind: "draft" };
+  const editingId = editingAnnotationId();
+  if (editingId != null) {
+    return { kind: "annotations", ids: [editingId] };
+  }
   pruneCommentSelection();
   if (state.selectedCommentIds.size > 0) {
     return {
@@ -1006,6 +1028,8 @@ function colorTargetIds() {
 
 function activeColorName() {
   if (state.draft && !state.draft.committed) return state.draft.color;
+  const editingId = editingAnnotationId();
+  if (editingId != null) return state.annotations.get(editingId).color;
   pruneCommentSelection();
   if (state.selectedCommentIds.size > 0) {
     const colors = [...state.selectedCommentIds]
@@ -1055,15 +1079,10 @@ function setCommentChromeColor(hex) {
   }
 }
 
-function selectAnnotationForMenu(id) {
-  settleDraftSync();
+function highlightAnnotationForMenu(id) {
   state.locateId = null;
-  state.focusId = id;
-  const ann = state.annotations.get(id);
-  if (ann?.color) state.color = ann.color;
-  updatePaletteSelection(activeColorName());
   renderAllHighlights();
-  updateCommentSelectionUi();
+  flashHighlight(id);
 }
 
 async function applyPaletteColor(name, { ids = null } = {}) {
@@ -1094,7 +1113,7 @@ async function applyPaletteColor(name, { ids = null } = {}) {
       updatePaletteSelection(last?.color ?? name);
       if (isCommentEditorOpen() && state.focusId != null) syncCommentEditor();
     } catch (err) {
-      toast(err.message || "Could not change colour", 4000);
+      toast(userFacingError(err, "Could not change colour"), 4000);
     }
     return;
   }
@@ -2632,7 +2651,21 @@ async function followInternalPdfLink(pageIndex, yPdf = 0) {
   await navigateToPdfDest(pageIndex, yPdf);
 }
 
+function openLinkViaAnchor(url) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function openExternalLink(url, { duplicate = false } = {}) {
+  if (window.pywebview?.api?.open_url) {
+    void window.pywebview.api.open_url(url);
+    return null;
+  }
   const name = duplicate ? `${LINK_WINDOW_NAME}-${Date.now()}` : LINK_WINDOW_NAME;
   if (!duplicate && state.linkWindow && !state.linkWindow.closed) {
     try {
@@ -2645,7 +2678,7 @@ function openExternalLink(url, { duplicate = false } = {}) {
   }
   const win = window.open(url, name, LINK_WINDOW_FEATURES);
   if (!win) {
-    toast("Allow pop-ups to open citation links", 3200);
+    openLinkViaAnchor(url);
     return null;
   }
   try { win.opener = null; } catch (_) { /* cross-origin */ }
@@ -2826,7 +2859,16 @@ function buildDraftCard() {
 
   const metaEl = document.createElement("div");
   metaEl.className = "comment-meta";
-  metaEl.innerHTML = `<span>Draft</span><span>p.${state.draft.pageIndex + 1}</span>`;
+  const pick = document.createElement("input");
+  pick.type = "checkbox";
+  pick.className = "comment-pick";
+  pick.disabled = true;
+  pick.title = "Draft — not selectable until saved";
+  pick.setAttribute("aria-label", "Draft comment");
+  const metaMain = document.createElement("div");
+  metaMain.className = "comment-meta-main";
+  metaMain.innerHTML = `<span>Draft</span><span>p.${state.draft.pageIndex + 1}</span>`;
+  metaEl.append(pick, metaMain);
   inner.appendChild(metaEl);
 
   const quote = document.createElement("p");
@@ -2876,9 +2918,15 @@ function buildCommentCard(ann) {
   pick.checked = picked;
   pick.title = "Select comment";
   pick.setAttribute("aria-label", "Select comment");
-  pick.addEventListener("click", (ev) => {
+  pick.addEventListener("mousedown", (ev) => ev.stopPropagation());
+  pick.addEventListener("click", (ev) => ev.stopPropagation());
+  pick.addEventListener("change", (ev) => {
     ev.stopPropagation();
-    toggleCommentSelection(ann.id, { additive: true });
+    if (pick.checked) state.selectedCommentIds.add(ann.id);
+    else state.selectedCommentIds.delete(ann.id);
+    state.lastSelectedCommentId = ann.id;
+    updateCommentSelectionUi();
+    updatePaletteSelection(activeColorName());
   });
   const metaMain = document.createElement("div");
   metaMain.className = "comment-meta-main";
@@ -2890,7 +2938,6 @@ function buildCommentCard(ann) {
   titleBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
     settleDraftSync();
-    clearCommentSelection();
     focusAnnotation(ann.id, { edit: true, scrollCard: false, behavior: "auto" });
   });
   const pageBtn = document.createElement("button");
@@ -2953,7 +3000,6 @@ function buildCommentCard(ann) {
     if (!ev.target.closest(".comment-edit-hit")) return;
     ev.stopPropagation();
     settleDraftSync();
-    clearCommentSelection();
     focusAnnotation(ann.id, { edit: true });
   });
 
@@ -3617,8 +3663,11 @@ function contextMenuItems(ann) {
     { label: "Edit comment", action: () => focusAnnotation(ann.id, { center: true }) },
     { label: "Copy comment", action: () => navigator.clipboard.writeText(ann.content || "") },
     { label: "Copy highlight text", action: () => copyHighlightText(ann) },
+    { label: "Delete", danger: true, action: () => requestDelete(ann.id, ann.content) },
+    { sep: true },
   ];
-  for (const [name] of Object.entries(mergedPalette(state.doc.palette))) {
+  const palette = state.doc?.palette || {};
+  for (const [name] of Object.entries(palette)) {
     items.push({
       label: `Colour · ${name.startsWith("#") ? name : name}`,
       action: () => {
@@ -3626,12 +3675,6 @@ function contextMenuItems(ann) {
       },
     });
   }
-  items.push({ sep: true });
-  items.push({
-    label: "Delete",
-    danger: true,
-    action: () => requestDelete(ann.id, ann.content),
-  });
   return items;
 }
 
@@ -3656,7 +3699,7 @@ function mountContextMenu(ev, items) {
 function openCtx(ev, ann) {
   ev.preventDefault();
   ev.stopPropagation();
-  selectAnnotationForMenu(ann.id);
+  highlightAnnotationForMenu(ann.id);
   mountContextMenu(ev, contextMenuItems(ann));
 }
 

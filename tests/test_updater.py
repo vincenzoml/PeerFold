@@ -23,7 +23,10 @@ def test_platform_asset_name_by_os(monkeypatch):
 
 
 def test_download_url_uses_latest_release():
-    assert download_url().endswith("/peerfold-macos.dmg") or download_url() is None
+    url = download_url()
+    if url is None:
+        return
+    assert url.endswith(f"/{platform_asset_name()}")
 
 
 def test_install_mode_frozen():

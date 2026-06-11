@@ -161,23 +161,42 @@ def ensure_venv_python(*, pin: str | None = None) -> Path:
     return py
 
 
+def _version_from_peerfold_cli(py: Path) -> str | None:
+    peerfold = py.parent / ("peerfold.exe" if _win32() else "peerfold")
+    if not peerfold.is_file():
+        return None
+    result = subprocess.run(
+        [str(peerfold), "--version"],
+        capture_output=True,
+        text=True,
+        cwd=str(user_data_dir()),
+    )
+    if result.returncode != 0:
+        return None
+    match = re.search(r"(\d+\.\d+\.\d+)", result.stdout)
+    return match.group(1) if match else None
+
+
 def installed_version(py: Path) -> str | None:
     """Read the installed package version (uv venvs do not include pip)."""
     neutral = str(user_data_dir())
-    result = subprocess.run(
-        [
-            str(py),
-            "-c",
-            "import importlib.metadata as m; print(m.version('peerfold-review'))",
-        ],
-        capture_output=True,
-        text=True,
-        cwd=neutral,
-    )
-    if result.returncode == 0:
-        version = result.stdout.strip()
-        if version:
-            return version
+    for code in (
+        "import importlib.metadata as m; print(m.version('peerfold-review'))",
+        "import peerfold; print(getattr(peerfold, '__version__', ''))",
+    ):
+        result = subprocess.run(
+            [str(py), "-c", code],
+            capture_output=True,
+            text=True,
+            cwd=neutral,
+        )
+        if result.returncode == 0:
+            version = result.stdout.strip()
+            if version:
+                return version
+    cli_version = _version_from_peerfold_cli(py)
+    if cli_version:
+        return cli_version
     try:
         uv = ensure_uv()
     except SystemExit:
@@ -279,24 +298,38 @@ def install_package(py: Path, *, pin: str | None = None) -> None:
     )
 
 
-def upgrade_to_latest(py: Path) -> str:
+def upgrade_to_latest(py: Path, *, latest: str | None = None) -> str:
     dev = local_peerfold_repo()
     if dev is not None:
         uv_pip_install(py, "-e", str(dev), progress=f"Refreshing editable PeerFold from {dev.name}…")
         return local_repo_version(dev)
-    latest = latest_pypi_version()
+    target = latest or latest_pypi_version()
     uv_pip_install(
         py,
         "--upgrade",
-        f"{PACKAGE}=={latest}",
-        progress=f"Updating PeerFold to {latest}…",
+        f"{PACKAGE}=={target}",
+        progress=f"Updating PeerFold to {target}…",
     )
     installed = installed_version(py)
-    if installed != latest:
-        raise SystemExit(
-            f"Installed {PACKAGE} {installed or '?'}, expected PyPI latest {latest}"
+    if installed != target:
+        uv_pip_install(
+            py,
+            "--reinstall",
+            f"{PACKAGE}=={target}",
+            progress=f"Reinstalling PeerFold {target}…",
         )
-    return latest
+        installed = installed_version(py)
+    if installed != target:
+        hint = ""
+        if installed is None:
+            hint = (
+                "\n\nRe-fetch the launcher, then run --update again:\n"
+                "  curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py"
+            )
+        raise SystemExit(
+            f"Installed {PACKAGE} {installed or '?'}, expected PyPI latest {target}{hint}"
+        )
+    return target
 
 
 def write_pinned_version(script: Path, version: str) -> None:
@@ -329,13 +362,13 @@ def main() -> None:
     dev = local_peerfold_repo()
 
     if do_update:
-        latest = upgrade_to_latest(py)
         if dev is None:
+            latest = latest_pypi_version()
+            py = ensure_venv_python(pin=latest)
+            latest = upgrade_to_latest(py, latest=latest)
             if latest != PEERFOLD_VERSION:
                 old_pin = PEERFOLD_VERSION
                 write_pinned_version(script, latest)
-                py = ensure_venv_python(pin=latest)
-                install_package(py, pin=latest)
                 print(
                     f"Updated {PACKAGE} {old_pin} → {latest} — "
                     "commit peerfold.py so co-authors stay in sync."
@@ -343,6 +376,7 @@ def main() -> None:
             else:
                 print(f"{PACKAGE} {latest} — pin already matches PyPI.")
         else:
+            latest = upgrade_to_latest(py)
             print(f"Local dev install: {dev} ({latest})")
         if not args:
             raise SystemExit(0)

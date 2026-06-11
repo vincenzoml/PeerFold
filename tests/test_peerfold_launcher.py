@@ -58,21 +58,61 @@ def test_user_data_dir_default(monkeypatch):
 
 def test_installed_version_reads_metadata(monkeypatch, tmp_path):
     mod = load_launcher()
-    py = tmp_path / "python"
+    py = tmp_path / "bin" / "python"
+    py.parent.mkdir(parents=True)
     py.write_text("# stub", encoding="utf-8")
     py.chmod(0o755)
 
     def fake_run(cmd, **kwargs):
-        assert "importlib.metadata" in cmd[2]
+        if len(cmd) >= 3 and cmd[0] == str(py) and cmd[1] == "-c":
+            if "importlib.metadata" in cmd[2]:
+                class Result:
+                    returncode = 0
+                    stdout = "0.1.44\n"
+                    stderr = ""
+                return Result()
+            class Result:
+                returncode = 1
+                stdout = ""
+                stderr = ""
+            return Result()
         class Result:
-            returncode = 0
-            stdout = "0.1.44\n"
+            returncode = 1
+            stdout = ""
             stderr = ""
         return Result()
 
     monkeypatch.setattr(mod.subprocess, "run", fake_run)
     monkeypatch.setattr(mod, "user_data_dir", lambda: tmp_path / "data")
     assert mod.installed_version(py) == "0.1.44"
+
+
+def test_installed_version_falls_back_to_cli(monkeypatch, tmp_path):
+    mod = load_launcher()
+    py = tmp_path / "bin" / "python"
+    peerfold = py.parent / "peerfold"
+    py.parent.mkdir(parents=True)
+    py.write_text("# stub", encoding="utf-8")
+    peerfold.write_text("# stub", encoding="utf-8")
+    py.chmod(0o755)
+    peerfold.chmod(0o755)
+
+    def fake_run(cmd, **kwargs):
+        if cmd[:2] == [str(peerfold), "--version"]:
+            class Result:
+                returncode = 0
+                stdout = "peerfold 0.1.45\n"
+                stderr = ""
+            return Result()
+        class Result:
+            returncode = 1
+            stdout = ""
+            stderr = ""
+        return Result()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(mod, "user_data_dir", lambda: tmp_path / "data")
+    assert mod.installed_version(py) == "0.1.45"
 
 
 def test_venv_dir_versioned(monkeypatch):

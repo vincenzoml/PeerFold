@@ -6,11 +6,14 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import subprocess
 import sys
 import urllib.request
+from pathlib import Path
 
 PYPI_JSON = "https://pypi.org/pypi/peerfold-review/json"
 GITHUB_RELEASES = "https://api.github.com/repos/vincenzoml/PeerFold/releases?per_page=100"
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _fetch_json(url: str) -> dict:
@@ -26,6 +29,30 @@ def github_release_versions() -> list[str]:
         tag = str(release.get("tag_name", "")).lstrip("v")
         if re.fullmatch(r"\d+\.\d+\.\d+", tag):
             versions.append(tag)
+    return versions
+
+
+def read_init_version_for_tag(tag: str) -> str | None:
+    tag_name = tag if tag.startswith("v") else f"v{tag}"
+    result = subprocess.run(
+        ["git", "show", f"{tag_name}:src/peerfold/__init__.py"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    match = re.search(r'__version__\s*=\s*"([^"]+)"', result.stdout)
+    return match.group(1) if match else None
+
+
+def publishable_github_versions() -> list[str]:
+    versions: list[str] = []
+    for version in github_release_versions():
+        package_version = read_init_version_for_tag(version)
+        if package_version is None or package_version != version:
+            continue
+        versions.append(version)
     return versions
 
 
@@ -47,7 +74,7 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    gh = github_release_versions()
+    gh = publishable_github_versions()
     pypi = pypi_release_versions()
     missing = sorted(
         (v for v in gh if v not in pypi),

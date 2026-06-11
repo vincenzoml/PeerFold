@@ -136,6 +136,9 @@ const commentEditorMetaEl = $("#comment-editor-meta");
 const commentEditorQuoteEl = $("#comment-editor-quote");
 const commentEditorTa = $("#comment-editor-ta");
 const commentEditorFootEl = $("#comment-editor-foot");
+const commentEditorDeleteEl = $("#comment-editor-delete");
+let commentDeleteArmTimer = null;
+const COMMENT_DELETE_ARM_MS = 3500;
 const workspaceEl = $("#workspace");
 const workspaceSplitterEl = $("#workspace-splitter");
 const commentsPaneEl = $("#comments-pane");
@@ -1957,9 +1960,42 @@ function unbindCommentEditorReposition() {
   state.commentEditorReposition = null;
 }
 
+function disarmCommentDelete() {
+  clearTimeout(commentDeleteArmTimer);
+  commentDeleteArmTimer = null;
+  commentEditorDeleteEl?.classList.remove("armed");
+  if (commentEditorDeleteEl) {
+    commentEditorDeleteEl.title = "Delete comment";
+    commentEditorDeleteEl.setAttribute("aria-label", "Delete comment");
+  }
+}
+
+function syncCommentDeleteButton(mode) {
+  if (!commentEditorDeleteEl) return;
+  const show = mode === "ann" && state.focusId != null && state.annotations.has(state.focusId);
+  commentEditorDeleteEl.hidden = !show;
+  if (!show) disarmCommentDelete();
+}
+
+function onCommentDeleteClick() {
+  const id = state.focusId;
+  if (id == null || !state.annotations.has(id)) return;
+  if (!commentEditorDeleteEl?.classList.contains("armed")) {
+    disarmCommentDelete();
+    commentEditorDeleteEl.classList.add("armed");
+    commentEditorDeleteEl.title = "Click again to delete";
+    commentEditorDeleteEl.setAttribute("aria-label", "Click again to delete comment");
+    commentDeleteArmTimer = setTimeout(disarmCommentDelete, COMMENT_DELETE_ARM_MS);
+    return;
+  }
+  disarmCommentDelete();
+  void requestDelete(id);
+}
+
 function closeCommentEditor() {
   if (!commentEditorEl || commentEditorEl.hidden) return;
   if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
+  disarmCommentDelete();
   unbindCommentEditorReposition();
   commentEditorEl.hidden = true;
   commentEditorEl.setAttribute("aria-hidden", "true");
@@ -2035,6 +2071,7 @@ function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeh
   commentEditorTa.oninput = onInput ?? null;
   commentEditorTa.onkeydown = onKeydown ?? null;
   autosizeCommentEditorTa();
+  syncCommentDeleteButton(mode);
 
   commentEditorEl.hidden = false;
   commentEditorEl.setAttribute("aria-hidden", "false");
@@ -2102,7 +2139,7 @@ function syncCommentEditor() {
       meta: `p.${ann.page + 1}`,
       quote: excerptFor(ann),
       value: editorValueFor(ann),
-      placeholder: trimText(ann.content) ? "Comment" : "Empty — Backspace/Delete removes",
+      placeholder: trimText(ann.content) ? "Comment" : "Empty comment",
       foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line",
       onInput: state.pendingNote?.onInput,
       onKeydown: state.pendingNote?.onKeydown,
@@ -3253,17 +3290,7 @@ function renderDraftOverlay(meta, rects) {
   paintRects(meta.draftLayer, rects, meta.scale, DRAFT_GREY, "highlight draft");
 }
 
-function confirmDelete(text) {
-  const t = trimText(text);
-  if (!t) return true;
-  const preview = t.length > 140 ? `${t.slice(0, 140)}…` : t;
-  return window.confirm(`Delete this comment?\n\n“${preview}”`);
-}
-
-async function requestDelete(id, currentText) {
-  const ann = state.annotations.get(id);
-  const text = currentText ?? ann?.content ?? "";
-  if (!confirmDelete(text)) return;
+async function requestDelete(id) {
   await deleteAnnotation(id);
 }
 
@@ -3469,10 +3496,6 @@ function wireNoteEditing(ann, cardEl) {
       ev.preventDefault();
       flush().finally(() => blurComment());
       return;
-    }
-    if ((ev.key === "Backspace" || ev.key === "Delete") && trimText(ta()?.value ?? "") === "") {
-      ev.preventDefault();
-      requestDelete(ann.id, ta()?.value ?? "");
     }
   };
 
@@ -3726,8 +3749,6 @@ async function deleteSelectedComments() {
   pruneCommentSelection();
   const ids = [...state.selectedCommentIds];
   if (!ids.length) return;
-  const label = ids.length === 1 ? "this comment" : `${ids.length} comments`;
-  if (!window.confirm(`Delete ${label}?`)) return;
   await deleteAnnotations(ids);
   clearCommentSelection();
 }
@@ -3751,23 +3772,39 @@ function positionContextMenu(x, y) {
 }
 
 function contextMenuItems(ann) {
-  const items = [
+  return [
     { label: "Edit comment", action: () => focusAnnotation(ann.id, { center: true }) },
     { label: "Copy comment", action: () => navigator.clipboard.writeText(ann.content || "") },
     { label: "Copy highlight text", action: () => copyHighlightText(ann) },
-    { label: "Delete", danger: true, action: () => requestDelete(ann.id, ann.content) },
+    { label: "Delete", danger: true, action: () => requestDelete(ann.id) },
     { sep: true },
+    { palette: ann },
   ];
-  const palette = state.doc?.palette || {};
-  for (const [name] of Object.entries(palette)) {
-    items.push({
-      label: `Colour · ${name.startsWith("#") ? name : name}`,
-      action: () => {
-        void applyPaletteColor(name, { ids: [ann.id] });
-      },
+}
+
+function mountContextPalette(ann) {
+  const wrap = document.createElement("div");
+  wrap.className = "ctx-palette palette";
+  wrap.setAttribute("role", "radiogroup");
+  wrap.setAttribute("aria-label", "Highlight colour");
+  const merged = mergedPalette(state.doc?.palette || {});
+  const current = ann.color;
+  for (const [name, hex] of Object.entries(merged)) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "swatch";
+    btn.dataset.color = name;
+    btn.style.background = hex;
+    btn.title = name.startsWith("#") ? `Custom ${name}` : name;
+    btn.setAttribute("role", "radio");
+    btn.setAttribute("aria-checked", name === current ? "true" : "false");
+    btn.addEventListener("click", () => {
+      hideCtx();
+      void applyPaletteColor(name, { ids: [ann.id] });
     });
+    wrap.appendChild(btn);
   }
-  return items;
+  return wrap;
 }
 
 function mountContextMenu(ev, items) {
@@ -3775,6 +3812,10 @@ function mountContextMenu(ev, items) {
   for (const item of items) {
     if (item.sep) {
       ctxMenu.appendChild(document.createElement("hr"));
+      continue;
+    }
+    if (item.palette) {
+      ctxMenu.appendChild(mountContextPalette(item.palette));
       continue;
     }
     const btn = document.createElement("button");
@@ -4359,6 +4400,12 @@ async function init() {
     history.replaceState(null, "", cleanUrl);
   }
   wireOpenPdf();
+  commentEditorDeleteEl?.addEventListener("click", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    onCommentDeleteClick();
+  });
+  commentEditorTa?.addEventListener("input", () => disarmCommentDelete());
   if (nativeWindowsAvailable()) {
     newWindowBtnEl?.addEventListener("click", () => requestNewWindow());
     duplicateWindowBtnEl?.addEventListener("click", () => requestDuplicateWindow());

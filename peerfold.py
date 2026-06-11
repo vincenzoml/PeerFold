@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.42"
+PEERFOLD_VERSION = "0.1.43"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 

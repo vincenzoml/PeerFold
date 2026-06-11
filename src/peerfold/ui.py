@@ -264,6 +264,30 @@ class ApplicationMenuApi:
         if api is not None:
             api.menu_select_all()
 
+    def menu_copy_comments(self) -> None:
+        run_on_main_thread(self._menu_copy_comments)
+
+    def _menu_copy_comments(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_copy_comments()
+
+    def menu_export_markdown(self) -> None:
+        run_on_main_thread(self._menu_export_markdown)
+
+    def _menu_export_markdown(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_export_markdown()
+
+    def menu_export_text(self) -> None:
+        run_on_main_thread(self._menu_export_text)
+
+    def _menu_export_text(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_export_text()
+
     def menu_zoom_in(self) -> None:
         run_on_main_thread(self._menu_zoom_in)
 
@@ -334,6 +358,28 @@ class PeerFoldApi:
         path = result[0] if isinstance(result, (list, tuple)) else result
         return str(Path(path).expanduser().resolve())
 
+    def save_export(self, suggested_name: str, content: str, fmt: str) -> dict[str, Any]:
+        if not self._window:
+            return {"ok": False, "error": "no window"}
+        import webview
+
+        if fmt == "markdown":
+            file_types = ("Markdown (*.md)", "All files (*.*)")
+            default = suggested_name if suggested_name.endswith(".md") else f"{suggested_name}.md"
+        else:
+            file_types = ("Plain text (*.txt)", "All files (*.*)")
+            default = suggested_name if suggested_name.endswith(".txt") else f"{suggested_name}.txt"
+        result = self._window.create_file_dialog(
+            webview.SAVE_DIALOG,
+            save_filename=default,
+            file_types=file_types,
+        )
+        if not result:
+            return {"ok": False, "cancelled": True}
+        path = result if isinstance(result, str) else result[0]
+        Path(path).write_text(content, encoding="utf-8")
+        return {"ok": True, "path": str(Path(path).expanduser().resolve())}
+
     def open_url(self, url: str) -> None:
         open_url(url)
 
@@ -365,6 +411,15 @@ class PeerFoldApi:
 
     def menu_select_all(self) -> None:
         self._dispatch("select-all")
+
+    def menu_copy_comments(self) -> None:
+        self._dispatch("copy-comments")
+
+    def menu_export_markdown(self) -> None:
+        self._dispatch("export-markdown")
+
+    def menu_export_text(self) -> None:
+        self._dispatch("export-text")
 
     def menu_zoom_in(self) -> None:
         self._dispatch("zoom-in")
@@ -464,6 +519,9 @@ def build_application_menu(api: ApplicationMenuApi):
             MenuAction("Duplicate Window", api.menu_duplicate_window),
             MenuSeparator(),
             Menu("Open Recent", recent_items),
+            MenuSeparator(),
+            MenuAction("Export Comments as Markdown…", api.menu_export_markdown),
+            MenuAction("Export Comments as Text…", api.menu_export_text),
         ],
     )
 
@@ -474,6 +532,7 @@ def build_application_menu(api: ApplicationMenuApi):
             MenuAction("Redo", api.menu_redo),
             MenuSeparator(),
             MenuAction("Copy", api.menu_copy),
+            MenuAction("Copy Comments", api.menu_copy_comments),
             MenuAction("Select All Comments", api.menu_select_all),
         ],
     )

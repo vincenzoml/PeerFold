@@ -115,6 +115,7 @@ const commentsListEl = $("#comments-list");
 const commentsCountEl = $("#comments-count");
 const commentsSelectionBarEl = $("#comments-selection-bar");
 const commentsSelectionCountEl = $("#comments-selection-count");
+const commentsCopySelectedEl = $("#comments-copy-selected");
 const commentsDeleteSelectedEl = $("#comments-delete-selected");
 const commentsClearSelectionEl = $("#comments-clear-selection");
 const zoomLabelEl = $("#zoom-label");
@@ -384,6 +385,9 @@ function wireNativeDropPaths() {
     if (action === "undo") void performUndo();
     else if (action === "redo") void performRedo();
     else if (action === "copy") void copySelectedText();
+    else if (action === "copy-comments") void copyCommentsToClipboard();
+    else if (action === "export-markdown") void exportComments("markdown");
+    else if (action === "export-text") void exportComments("text");
     else if (action === "select-all") selectAllComments();
     else if (action === "zoom-in") zoomFromShortcut("in");
     else if (action === "zoom-out") zoomFromShortcut("out");
@@ -3796,6 +3800,93 @@ async function deleteSelectedComments() {
   clearCommentSelection();
 }
 
+function exportCommentIds() {
+  pruneCommentSelection();
+  if (state.selectedCommentIds.size > 0) {
+    return sortedAnnotations()
+      .filter((ann) => state.selectedCommentIds.has(ann.id))
+      .map((ann) => ann.id);
+  }
+  return sortedAnnotations().map((ann) => ann.id);
+}
+
+async function fetchCommentExport(format, ids) {
+  const qs = new URLSearchParams({ format });
+  if (state.selectedCommentIds.size > 0) {
+    qs.set("ids", ids.join(","));
+  }
+  return api(`/api/export?${qs.toString()}`);
+}
+
+function downloadTextExport(name, text, mime = "text/plain;charset=utf-8") {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function copyCommentsToClipboard() {
+  if (!state.doc || !state.annotations.size) {
+    toast("No comments to copy", 2000);
+    return;
+  }
+  const ids = exportCommentIds();
+  if (!ids.length) {
+    toast("No comments to copy", 2000);
+    return;
+  }
+  try {
+    const payload = await fetchCommentExport("text", ids);
+    await navigator.clipboard.writeText(payload.text);
+    const label = state.selectedCommentIds.size > 0
+      ? `${payload.count} comment${payload.count === 1 ? "" : "s"} copied`
+      : `All ${payload.count} comments copied`;
+    toast(label, 2000);
+  } catch (err) {
+    toast(userFacingError(err, "Could not copy comments"), 3000);
+  }
+}
+
+async function exportComments(format) {
+  if (!state.doc || !state.annotations.size) {
+    toast("No comments to export", 2000);
+    return;
+  }
+  const ids = exportCommentIds();
+  if (!ids.length) {
+    toast("No comments to export", 2000);
+    return;
+  }
+  if (state.selectedCommentIds.size > 0) {
+    const noun = ids.length === 1 ? "comment" : "comments";
+    if (!window.confirm(`Export ${ids.length} selected ${noun}?`)) return;
+  }
+  try {
+    const payload = await fetchCommentExport(format, ids);
+    if (window.pywebview?.api?.save_export) {
+      const result = await window.pywebview.api.save_export(
+        payload.suggested_name,
+        payload.text,
+        format,
+      );
+      if (result?.ok) {
+        toast(`Exported ${payload.count} comment${payload.count === 1 ? "" : "s"}`, 2500);
+      } else if (!result?.cancelled) {
+        toast(result?.error || "Could not save export", 3000);
+      }
+      return;
+    }
+    const mime = format === "markdown" ? "text/markdown;charset=utf-8" : "text/plain;charset=utf-8";
+    downloadTextExport(payload.suggested_name, payload.text, mime);
+    toast(`Exported ${payload.count} comment${payload.count === 1 ? "" : "s"}`, 2500);
+  } catch (err) {
+    toast(userFacingError(err, "Could not export comments"), 3000);
+  }
+}
+
 function positionContextMenu(x, y) {
   ctxMenu.hidden = false;
   ctxMenu.style.left = "0px";
@@ -4479,6 +4570,7 @@ async function init() {
     }
   });
 
+  commentsCopySelectedEl?.addEventListener("click", () => { void copyCommentsToClipboard(); });
   commentsDeleteSelectedEl?.addEventListener("click", () => { void deleteSelectedComments(); });
   commentsClearSelectionEl?.addEventListener("click", clearCommentSelection);
   undoBtnEl?.addEventListener("click", () => { void performUndo(); });
@@ -4527,6 +4619,12 @@ async function init() {
       if (isEditableTarget(ev)) return;
       ev.preventDefault();
       zoomFromShortcut("reset");
+      return;
+    }
+    if (isModKey(ev) && ev.shiftKey && ev.key.toLowerCase() === "c") {
+      if (isEditableTarget(ev)) return;
+      ev.preventDefault();
+      void copyCommentsToClipboard();
       return;
     }
     if (isModKey(ev) && ev.key.toLowerCase() === "c") {

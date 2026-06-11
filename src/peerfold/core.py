@@ -792,6 +792,42 @@ class PdfSession:
         with self.lock:
             return self._list_highlights_in_doc(self.doc)
 
+    def export_comments_payload(
+        self,
+        fmt: str,
+        *,
+        ids: list[int] | None = None,
+    ) -> dict[str, Any]:
+        from peerfold.comment_export import export_comments, parse_toc, suggested_export_name
+
+        if fmt not in ("markdown", "text"):
+            raise ValueError("format must be markdown or text")
+        with self.lock:
+            annotations = self._list_highlights_in_doc(self.doc)
+            if ids is not None:
+                wanted = {int(i) for i in ids}
+                annotations = [ann for ann in annotations if int(ann["id"]) in wanted]
+            if not annotations:
+                raise ValueError("no comments to export")
+            toc = parse_toc(self.doc)
+            pages = {int(ann["page"]) for ann in annotations}
+            spans_by_page = {pno: self.page_spans(pno) for pno in pages}
+            text = export_comments(
+                doc_name=self.source.name,
+                annotations=annotations,
+                page_spans=spans_by_page,
+                toc=toc,
+                fmt=fmt,  # type: ignore[arg-type]
+            )
+            selected = ids is not None
+            return {
+                "format": fmt,
+                "text": text,
+                "count": len(annotations),
+                "selected": selected,
+                "suggested_name": suggested_export_name(self.source.name, fmt, selected=selected),
+            }
+
     def create_highlight(
         self,
         page_index: int,
@@ -1382,6 +1418,24 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if self._guard_document():
                 return
             return self._json(200, self.session.list_annotations())
+        if path == "/api/export":
+            if self._guard_document():
+                return
+            qs = parse_qs(parsed.query)
+            fmt = (qs.get("format", ["text"])[0] or "text").strip().lower()
+            raw_ids = (qs.get("ids", [""])[0] or "").strip()
+            ids = None
+            if raw_ids:
+                try:
+                    ids = [int(part) for part in raw_ids.split(",") if part.strip()]
+                except ValueError:
+                    return self._json(400, {"error": "invalid ids"})
+                if not ids:
+                    return self._json(400, {"error": "invalid ids"})
+            try:
+                return self._json(200, self.session.export_comments_payload(fmt, ids=ids))
+            except ValueError as exc:
+                return self._json(400, {"error": str(exc)})
         if path.startswith("/api/page/"):
             if self._guard_document():
                 return

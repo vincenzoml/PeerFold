@@ -198,6 +198,29 @@ def test_batch_update_colors(tmp_path, monkeypatch):
         session.close()
 
 
+def test_export_comments_payload(tmp_path):
+    fitz = import_fitz()
+    pdf = tmp_path / "export.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "sample text")
+    doc.save(pdf)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    try:
+        created = session.create_highlight(0, [0], "yellow", "Note one", rects=[[72, 60, 120, 75]])
+        payload = session.export_comments_payload("text")
+        assert payload["count"] == 1
+        assert "Note one" in payload["text"]
+        assert payload["suggested_name"].endswith("-comments.txt")
+        selected = session.export_comments_payload("markdown", ids=[created["id"]])
+        assert selected["selected"] is True
+        assert selected["suggested_name"].endswith("-selected-comments.md")
+    finally:
+        session.close()
+
+
 def test_rects_overlap_corner_touch_is_not_overlap():
     new_rect = [270.2026110197368, 167.78248596191406, 304.9469299316406, 182.896484375]
     existing = [304.9469299316406, 151.8187255859375, 411.3168640136719, 166.9327392578125]

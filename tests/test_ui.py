@@ -68,6 +68,7 @@ def test_build_application_menu_has_file_and_help(monkeypatch, tmp_path):
     assert "Open Recent" in sub_titles
     assert "New Window" in sub_titles
     assert "Duplicate Window" in sub_titles
+    assert "Export Comments as Markdown…" in sub_titles
     recent_menu = next(item for item in file_menu.items if getattr(item, "title", None) == "Open Recent")
     recent_titles = [item.title for item in recent_menu.items if hasattr(item, "title")]
     assert "Clear Menu" in recent_titles

@@ -61,6 +61,17 @@ peerfold paper.pdf --no-browser     # server only
 
 Environment: `PEERFOLD_REVIEWER` sets the default reviewer name. Set `PEERFOLD_SAVE_COPY=1` to write sidecar files (`paper_VC-2026-06-09.pdf`) instead of editing in place.
 
+## Roadmap
+
+Planned features (discussion and design in GitHub issues):
+
+| Feature | Issue |
+|---------|-------|
+| Merge comments from different PDFs into one view | [#1](https://github.com/vincenzoml/PeerFold/issues/1) |
+| PDF diff view for revised manuscripts | [#2](https://github.com/vincenzoml/PeerFold/issues/2) |
+| GitHub integration for paper repos and review versioning | [#3](https://github.com/vincenzoml/PeerFold/issues/3) |
+| Export comments to human-readable text (page, section, quote) | [#4](https://github.com/vincenzoml/PeerFold/issues/4) |
+
 ## Development
 
 ```bash

@@ -4,7 +4,7 @@ from pathlib import Path
 
 
 def load_launcher():
-    path = Path(__file__).resolve().parents[1] / "scripts" / "peerfold.py"
+    path = Path(__file__).resolve().parents[1] / "peerfold.py"
     spec = importlib.util.spec_from_file_location("peerfold_launcher", path)
     mod = importlib.util.module_from_spec(spec)
     assert spec.loader is not None
@@ -38,3 +38,10 @@ def test_latest_pypi_version():
     mod = load_launcher()
     latest = mod.latest_pypi_version()
     assert re.fullmatch(r"\d+\.\d+\.\d+", latest)
+
+
+def test_peerfold_launcher_matches_docs_copy():
+    root = Path(__file__).resolve().parents[1]
+    assert (root / "peerfold.py").read_text(encoding="utf-8") == (
+        root / "docs" / "peerfold.py"
+    ).read_text(encoding="utf-8")

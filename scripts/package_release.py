@@ -41,9 +41,9 @@ RUN="${DIR}/__BINARY__"
 if [[ $# -eq 0 ]]; then
   PDF=$(osascript -e 'POSIX path of (choose file with prompt "Select PDF to review" of type {"com.adobe.pdf", "pdf"})' 2>/dev/null || true)
   [[ -z "${PDF}" ]] && exit 0
-  exec "${RUN}" "${PDF}"
+  exec -a PeerFold "${RUN}" "${PDF}"
 fi
-exec "${RUN}" "$@"
+exec -a PeerFold "${RUN}" "$@"
 """
 
 MACOS_LAUNCHER_SRC = Path(__file__).resolve().parent / "macos" / "peerfold_launcher.m"
@@ -88,7 +88,7 @@ def _install_macos_launcher(macos_dir: Path, binary_name: str) -> None:
 
 
 def _macos_bundle_plist_extras() -> dict[str, object]:
-    """Load plist extras without importing the peerfold package (scripts/peerfold.py shadows it)."""
+    """Load plist extras without importing the peerfold package (peerfold.py shadows it)."""
     handlers_py = Path(__file__).resolve().parents[1] / "src" / "peerfold" / "handlers.py"
     spec = importlib.util.spec_from_file_location("_peerfold_handlers", handlers_py)
     if spec is None or spec.loader is None:

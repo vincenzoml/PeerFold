@@ -34,16 +34,16 @@ One launcher file — pinned PyPI version, same build for every co-author. Do **
 **One-liner** (from project root):
 
 ```bash
-mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore
-python3 scripts/peerfold.py manuscript.pdf --reviewer AB
+curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py
+./peerfold.py manuscript.pdf --reviewer AB
 ```
 
-**Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) → `scripts/peerfold.py`, add `.venv-peerfold/` to `.gitignore`.
+Add `.venv-peerfold/` to `.gitignore`. **Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) into your project root.
 
 Upgrade when needed:
 
 ```bash
-python3 scripts/peerfold.py --update   # then commit scripts/peerfold.py
+./peerfold.py --update   # then commit peerfold.py
 ```
 
 Site: [vincenzoml.github.io/PeerFold](https://vincenzoml.github.io/PeerFold/)

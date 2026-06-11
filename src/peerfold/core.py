@@ -864,15 +864,15 @@ class PdfSession:
                 annot.set_colors(stroke=rgb)
             annot.update()
             pno = page.number
-            name = color_name
-            if name is None:
+            if color_name is not None:
+                name, _ = resolve_color(color_name)
+            else:
                 colors = annot.colors or {}
-                stroke = colors.get("stroke") or PALETTE["yellow"]
+                stroke = colors.get("stroke") or colors.get("fill") or PALETTE["yellow"]
                 if isinstance(stroke, (list, tuple)) and len(stroke) >= 3:
                     name = nearest_palette_name((float(stroke[0]), float(stroke[1]), float(stroke[2])))
                 else:
                     name = "yellow"
-            if name is not None:
                 name, _ = resolve_color(name)
             self._persist()
             return self._annot_response(self._annot_dict(pno, annot, name or "yellow"))
@@ -939,6 +939,25 @@ class PdfSession:
             if deleted:
                 self._persist()
             return {"deleted": deleted, "revision": self.revision}
+
+    def batch_update_colors(self, xrefs: list[int], color_name: str) -> dict[str, Any]:
+        with self.lock:
+            if not xrefs:
+                raise ValueError("no annotation ids")
+            name, rgb = resolve_color(color_name)
+            items: list[dict[str, Any]] = []
+            for xref in xrefs:
+                page, annot = self._find_annot(int(xref))
+                if annot is None:
+                    raise KeyError(xref)
+                annot.set_colors(stroke=rgb)
+                annot.update()
+                items.append(self._annot_dict(page.number, annot, name))
+            self._persist()
+            return {
+                "items": [self._annot_response(item) for item in items],
+                "revision": self.revision,
+            }
 
     def _restore_highlight_locked(self, snapshot: dict[str, Any]) -> dict[str, Any]:
         page_index = int(snapshot["page"])
@@ -1370,6 +1389,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     raise ValueError("no snapshots to restore")
                 restored, revision = self.session.restore_highlights(items)
                 return self._json(201, {"items": restored, "revision": revision})
+            if path == "/api/annotations/batch-color":
+                data = self._read_json()
+                ids = [int(x) for x in (data.get("ids") or [])]
+                color = str(data.get("color") or "yellow")
+                result = self.session.batch_update_colors(ids, color)
+                return self._json(200, result)
             if path == "/api/save":
                 saved = self.session.save()
                 return self._json(200, {"path": saved, **self.session.document_info()})
@@ -1561,7 +1586,7 @@ def run_server(
         raise SystemExit(
             "PeerFold UI files are missing from this install "
             f"(expected {static / 'index.html'}). "
-            "Run: python3 scripts/peerfold.py --update"
+            "Run: ./peerfold.py --update"
         )
 
     if ui == "webview":

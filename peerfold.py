@@ -2,15 +2,16 @@
 """Repo-local PeerFold launcher: pinned venv + explicit updates.
 
 Usage:
-    python3 scripts/peerfold.py review-builds/paper.pdf --reviewer AB
-    python3 scripts/peerfold.py paper.pdf --web          # over SSH
-    python3 scripts/peerfold.py --update                 # upgrade PyPI pin (commit after)
+    ./peerfold.py manuscript.pdf --reviewer AB
+    ./peerfold.py paper.pdf --web          # over SSH
+    ./peerfold.py --update                 # upgrade PyPI pin (commit after)
 
-Creates .venv-peerfold/ (gitignored). Normal runs install the pinned version below
-so every co-author gets the same PeerFold. Run --update when you want a newer release.
+Drop this file in your project root (copy or curl). Creates .venv-peerfold/
+(gitignored). Normal runs install the pinned version below so every co-author
+gets the same PeerFold. Run --update when you want a newer release.
 
 Local dev: set PEERFOLD_LOCAL=/path/to/PeerFold checkout, or put that path in
-scripts/.peerfold-local (gitignored) for editable installs with unpublished fixes.
+.peerfold-local (gitignored) for editable installs with unpublished fixes.
 """
 
 from __future__ import annotations
@@ -24,11 +25,10 @@ from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
 
-ROOT = Path(__file__).resolve().parents[1]
-SCRIPT_DIR = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent
 VENV = ROOT / ".venv-peerfold"
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.27"
+PEERFOLD_VERSION = "0.1.35"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
@@ -49,7 +49,7 @@ def local_peerfold_repo() -> Path | None:
     raw = os.environ.get("PEERFOLD_LOCAL", "").strip()
     if raw:
         return _valid_local_repo(Path(raw))
-    sidecar = SCRIPT_DIR / ".peerfold-local"
+    sidecar = ROOT / ".peerfold-local"
     if sidecar.is_file():
         for line in sidecar.read_text(encoding="utf-8").splitlines():
             line = line.strip()
@@ -57,9 +57,8 @@ def local_peerfold_repo() -> Path | None:
                 found = _valid_local_repo(Path(line))
                 if found:
                     return found
-    auto = SCRIPT_DIR.parent
-    if (auto / "src" / "peerfold" / "__init__.py").is_file() and (auto / "pyproject.toml").is_file():
-        return auto
+    if (ROOT / "src" / "peerfold" / "__init__.py").is_file() and (ROOT / "pyproject.toml").is_file():
+        return ROOT
     return None
 
 
@@ -166,7 +165,7 @@ def main() -> None:
             write_pinned_version(script, latest)
             print(
                 f"Updated {PACKAGE} {PEERFOLD_VERSION} → {latest} — "
-                "commit scripts/peerfold.py so co-authors stay in sync."
+                "commit peerfold.py so co-authors stay in sync."
             )
         elif dev is not None:
             print(f"Local dev install: {dev} ({latest})")

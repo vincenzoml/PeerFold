@@ -122,6 +122,13 @@
       letter-spacing: -0.01em;
       color: var(--soft);
     }
+    .install-note {
+      margin: 0;
+      font-size: 13px;
+      line-height: 1.45;
+      color: var(--soft);
+    }
+    .install-note a { color: var(--accent); }
     .copy-cmd {
       display: block;
       width: 100%;
@@ -217,10 +224,11 @@
 
         <article class="install-card">
           <h2>add to any folder</h2>
-          <button type="button" class="copy-cmd" data-copy="mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore && python3 scripts/peerfold.py paper.pdf">
-            <code>mkdir -p scripts && curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o scripts/peerfold.py && echo '.venv-peerfold/' >> .gitignore && python3 scripts/peerfold.py paper.pdf</code>
+          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py && ./peerfold.py paper.pdf">
+            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py && ./peerfold.py paper.pdf</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
+          <p class="install-note"><a href="peerfold.py">peerfold.py</a> — drop in your project root; add <code>.venv-peerfold/</code> to <code>.gitignore</code>.</p>
         </article>
 
         <article class="install-card">

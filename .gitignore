@@ -16,3 +16,5 @@ venv/
 docs/demo_*.pdf
 .local-test
 .release-upload/
+.venv-peerfold/
+.peerfold-local

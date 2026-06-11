@@ -56,12 +56,39 @@ def test_user_data_dir_default(monkeypatch):
     assert path == Path.home() / ".local" / "share" / "peerfold"
 
 
+def test_installed_version_reads_metadata(monkeypatch, tmp_path):
+    mod = load_launcher()
+    py = tmp_path / "python"
+    py.write_text("# stub", encoding="utf-8")
+    py.chmod(0o755)
+
+    def fake_run(cmd, **kwargs):
+        assert "importlib.metadata" in cmd[2]
+        class Result:
+            returncode = 0
+            stdout = "0.1.44\n"
+            stderr = ""
+        return Result()
+
+    monkeypatch.setattr(mod.subprocess, "run", fake_run)
+    monkeypatch.setattr(mod, "user_data_dir", lambda: tmp_path / "data")
+    assert mod.installed_version(py) == "0.1.44"
+
+
 def test_venv_dir_versioned(monkeypatch):
     mod = load_launcher()
     monkeypatch.delenv("PEERFOLD_VENV", raising=False)
     monkeypatch.delenv("PEERFOLD_LOCAL", raising=False)
     monkeypatch.setattr(mod, "local_peerfold_repo", lambda: None)
     assert mod.venv_dir() == mod.user_data_dir() / "venvs" / mod.PEERFOLD_VERSION
+
+
+def test_venv_dir_accepts_pin(monkeypatch):
+    mod = load_launcher()
+    monkeypatch.delenv("PEERFOLD_VENV", raising=False)
+    monkeypatch.delenv("PEERFOLD_LOCAL", raising=False)
+    monkeypatch.setattr(mod, "local_peerfold_repo", lambda: None)
+    assert mod.venv_dir(pin="0.1.44") == mod.user_data_dir() / "venvs" / "0.1.44"
 
 
 def test_uv_cache_dir_default(monkeypatch):

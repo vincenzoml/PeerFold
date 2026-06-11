@@ -9,7 +9,7 @@ description = "Local PDF review with browser UI and Acrobat-compatible highlight
 readme = "README.md"
 license = { file = "LICENSE" }
 requires-python = ">=3.10"
-authors = [{ name = "Vincenzo Malagola" }]
+authors = [{ name = "Vincenzo Ciancia" }]
 keywords = ["pdf", "review", "annotation", "highlights", "academic"]
 classifiers = [
     "Development Status :: 4 - Beta",

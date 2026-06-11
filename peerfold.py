@@ -23,8 +23,8 @@ import re
 import subprocess
 import sys
 from pathlib import Path
-from urllib.error import URLError
-from urllib.request import urlopen
+from urllib.error import HTTPError, URLError
+from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
@@ -163,12 +163,53 @@ def local_repo_version(repo: Path) -> str:
     return match.group(1)
 
 
+def version_key(version: str) -> tuple[int, ...]:
+    return tuple(int(piece) for piece in version.split("."))
+
+
+def pypi_has_version(version: str) -> bool:
+    url = f"https://pypi.org/pypi/{PACKAGE}/{version}/json"
+    try:
+        with urlopen(Request(url, headers={"Accept": "application/json"}), timeout=15) as resp:
+            return 200 <= resp.status < 300
+    except HTTPError:
+        return False
+    except URLError:
+        return False
+
+
 def latest_pypi_version() -> str:
     try:
         with urlopen(PYPI_JSON, timeout=15) as resp:
-            return json.load(resp)["info"]["version"]
+            data = json.load(resp)
     except URLError as exc:
         raise SystemExit(f"Could not reach PyPI for {PACKAGE}: {exc}") from exc
+
+    versions: set[str] = set()
+    for version in data.get("releases", {}):
+        if re.fullmatch(r"\d+\.\d+\.\d+", version):
+            versions.add(version)
+    indexed = str(data.get("info", {}).get("version", ""))
+    if re.fullmatch(r"\d+\.\d+\.\d+", indexed):
+        versions.add(indexed)
+    if re.fullmatch(r"\d+\.\d+\.\d+", PEERFOLD_VERSION):
+        versions.add(PEERFOLD_VERSION)
+    if not versions:
+        raise SystemExit(f"No {PACKAGE} releases found on PyPI")
+
+    latest = max(versions, key=version_key)
+    major, minor, patch = version_key(latest)
+    gap = 0
+    for patch_num in range(patch + 1, patch + 40):
+        candidate = f"{major}.{minor}.{patch_num}"
+        if pypi_has_version(candidate):
+            latest = candidate
+            gap = 0
+        else:
+            gap += 1
+            if gap >= 3:
+                break
+    return latest
 
 
 def uv_pip_install(py: Path, *args: str) -> None:
@@ -245,7 +286,7 @@ def main() -> None:
         elif dev is not None:
             print(f"Local dev install: {dev} ({latest})")
         else:
-            print(f"{PACKAGE} {latest} — already the latest on PyPI (pin unchanged).")
+            print(f"{PACKAGE} {latest} — pin already matches PyPI.")
         if not args:
             raise SystemExit(0)
 

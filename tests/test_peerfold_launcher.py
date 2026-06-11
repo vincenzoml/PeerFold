@@ -38,6 +38,7 @@ def test_latest_pypi_version():
     mod = load_launcher()
     latest = mod.latest_pypi_version()
     assert re.fullmatch(r"\d+\.\d+\.\d+", latest)
+    assert mod.version_key(latest) >= mod.version_key(mod.PEERFOLD_VERSION)
 
 
 def test_peerfold_launcher_matches_docs_copy():

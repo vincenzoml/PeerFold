@@ -1,5 +1,4 @@
 #import <Cocoa/Cocoa.h>
-#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 #include <mach-o/dyld.h>
 #include <libgen.h>
 #include <unistd.h>
@@ -52,7 +51,7 @@ static void LaunchPeerFold(NSString *pdfPath) {
 
 - (void)cancelPendingPrompt {
     [NSObject cancelPreviousPerformRequestsWithTarget:self
-                                             selector:@selector(promptForPDFIfNeeded)
+                                             selector:@selector(launchWelcomeIfNeeded)
                                                object:nil];
 }
 
@@ -118,25 +117,9 @@ static void LaunchPeerFold(NSString *pdfPath) {
         andEventID:kAEOpenDocuments];
 }
 
-- (void)promptForPDF {
-    NSOpenPanel *panel = [NSOpenPanel openPanel];
-    panel.allowedContentTypes = @[UTTypePDF];
-    panel.canChooseFiles = YES;
-    panel.canChooseDirectories = NO;
-    panel.allowsMultipleSelection = NO;
-    panel.prompt = @"Open";
-    panel.message = @"Choose a PDF to review";
-    [panel beginWithCompletionHandler:^(NSModalResponse result) {
-        if (result == NSModalResponseOK) {
-            LaunchPeerFold(panel.URL.path);
-        }
-        [NSApp terminate:nil];
-    }];
-}
-
-- (void)promptForPDFIfNeeded {
+- (void)launchWelcomeIfNeeded {
     if (!self.opened) {
-        [self promptForPDF];
+        LaunchPeerFold(@"");
     }
 }
 
@@ -148,7 +131,7 @@ static void LaunchPeerFold(NSString *pdfPath) {
             return;
         }
     }
-    [self performSelector:@selector(promptForPDFIfNeeded) withObject:nil afterDelay:1.0];
+    [self performSelector:@selector(launchWelcomeIfNeeded) withObject:nil afterDelay:1.0];
 }
 
 @end

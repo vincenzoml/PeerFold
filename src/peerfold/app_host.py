@@ -153,9 +153,10 @@ class AppHost:
         doc = DocumentWindow(self, self.reviewer, pdf)
         doc.start_server()
         with self._docs_lock:
+            first_window = not self._documents
             self._documents.append(doc)
 
-        if not self._documents:
+        if first_window:
             print_launch_banner(pdf=pdf, local_url=doc.url)
             if terminal_verbose():
                 print_review_target(doc.session)

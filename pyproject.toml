@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "peerfold-review"
-version = "0.1.27"
+dynamic = ["version"]
 description = "Local PDF review with browser UI and Acrobat-compatible highlights"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -40,6 +40,9 @@ peerfold = "peerfold.cli:main"
 Homepage = "https://vincenzoml.github.io/PeerFold/"
 Repository = "https://github.com/vincenzoml/PeerFold"
 Issues = "https://github.com/vincenzoml/PeerFold/issues"
+
+[tool.setuptools.dynamic]
+version = { attr = "peerfold.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["src"]

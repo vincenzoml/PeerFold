@@ -18,6 +18,16 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Verify tag matches package version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from peerfold import __version__; print(__version__)")
+          echo "tag=$TAG package=$VERSION"
+          test "$TAG" = "$VERSION"
+
+      - name: Verify launcher pin matches package version
+        run: python scripts/check_versions.py
+
       - name: Build and publish to PyPI
         env:
           TWINE_USERNAME: __token__
@@ -25,7 +35,13 @@ jobs:
         run: |
           python -m pip install --upgrade pip build twine
           python -m build
+          python scripts/check_versions.py
           twine upload dist/*
+
+      - name: Verify PyPI has release
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          python scripts/check_release_parity.py --require-pypi "$TAG"
 
   github-release:
     strategy:
@@ -46,6 +62,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+      - name: Verify tag matches package version
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          VERSION=$(python -c "import sys; sys.path.insert(0, 'src'); from peerfold import __version__; print(__version__)")
+          echo "tag=$TAG package=$VERSION"
+          test "$TAG" = "$VERSION"
 
       - name: Build executable
         shell: bash

@@ -69,12 +69,3 @@ def test_uv_cache_dir_default(monkeypatch):
     monkeypatch.delenv("PEERFOLD_DATA", raising=False)
     assert mod.uv_cache_dir() == mod.user_data_dir() / "cache"
 
-
-def test_pinned_version_on_pypi():
-    mod = load_launcher()
-    latest = mod.latest_pypi_version()
-    with __import__("urllib.request").request.urlopen(mod.PYPI_JSON, timeout=15) as resp:
-        releases = __import__("json").load(resp).get("releases", {})
-    assert mod.PEERFOLD_VERSION in releases, (
-        f"PEERFOLD_VERSION {mod.PEERFOLD_VERSION} is not on PyPI (latest: {latest})"
-    )

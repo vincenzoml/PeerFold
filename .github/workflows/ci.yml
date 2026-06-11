@@ -30,6 +30,21 @@ jobs:
       - name: Build wheel
         run: python -m build
 
+      - name: Verify version alignment
+        run: python scripts/check_versions.py
+
+  release-parity:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: GitHub releases match PyPI
+        run: python scripts/check_release_parity.py
+
   standalone:
     needs: test
     strategy:

@@ -8,6 +8,7 @@ import json
 import re
 import subprocess
 import sys
+import time
 import urllib.request
 from pathlib import Path
 
@@ -56,9 +57,28 @@ def publishable_github_versions() -> list[str]:
     return versions
 
 
-def pypi_release_versions() -> set[str]:
+def pypi_has_version(version: str) -> bool:
+    url = f"https://pypi.org/pypi/peerfold-review/{version}/json"
+    req = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            return 200 <= resp.status < 300
+    except urllib.error.HTTPError:
+        return False
+
+
+def pypi_release_versions(extra_candidates: list[str] | None = None) -> set[str]:
     data = _fetch_json(PYPI_JSON)
-    return {v for v in data.get("releases", {}) if re.fullmatch(r"\d+\.\d+\.\d+", v)}
+    versions = {v for v in data.get("releases", {}) if re.fullmatch(r"\d+\.\d+\.\d+", v)}
+    latest = str(data.get("info", {}).get("version", ""))
+    if re.fullmatch(r"\d+\.\d+\.\d+", latest):
+        versions.add(latest)
+    for version in extra_candidates or []:
+        if version in versions:
+            continue
+        if pypi_has_version(version):
+            versions.add(version)
+    return versions
 
 
 def version_key(version: str) -> tuple[int, ...]:
@@ -72,33 +92,50 @@ def main() -> None:
         metavar="VERSION",
         help="Exit 1 unless VERSION is already on PyPI",
     )
+    parser.add_argument(
+        "--retry-seconds",
+        type=int,
+        default=0,
+        help="Retry until parity holds or timeout (for post-upload checks)",
+    )
     args = parser.parse_args()
 
-    gh = publishable_github_versions()
-    pypi = pypi_release_versions()
-    missing = sorted(
-        (v for v in gh if v not in pypi),
-        key=version_key,
-    )
-    extra = sorted(
-        (v for v in pypi if v not in set(gh)),
-        key=version_key,
-    )
+    deadline = time.time() + max(args.retry_seconds, 0)
+    while True:
+        gh = publishable_github_versions()
+        pypi = pypi_release_versions(gh)
+        missing = sorted(
+            (v for v in gh if v not in pypi),
+            key=version_key,
+        )
+        extra = sorted(
+            (v for v in pypi if v not in set(gh)),
+            key=version_key,
+        )
 
-    if args.require_pypi:
-        if args.require_pypi not in pypi:
-            print(f"PyPI does not have peerfold-review {args.require_pypi}", file=sys.stderr)
+        if args.require_pypi:
+            if args.require_pypi in pypi:
+                print(f"PyPI has peerfold-review {args.require_pypi}")
+                return
+            if time.time() >= deadline:
+                print(
+                    f"PyPI does not have peerfold-review {args.require_pypi}",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1)
+            time.sleep(5)
+            continue
+
+        if not missing and not extra:
+            print(f"GitHub and PyPI aligned ({len(gh)} releases)")
+            return
+        if time.time() >= deadline:
+            if missing:
+                print("GitHub releases missing on PyPI:", ", ".join(missing), file=sys.stderr)
+            if extra:
+                print("PyPI versions without GitHub release:", ", ".join(extra), file=sys.stderr)
             raise SystemExit(1)
-        print(f"PyPI has peerfold-review {args.require_pypi}")
-        return
-
-    if missing:
-        print("GitHub releases missing on PyPI:", ", ".join(missing), file=sys.stderr)
-    if extra:
-        print("PyPI versions without GitHub release:", ", ".join(extra), file=sys.stderr)
-    if missing or extra:
-        raise SystemExit(1)
-    print(f"GitHub and PyPI aligned ({len(gh)} releases)")
+        time.sleep(5)
 
 
 if __name__ == "__main__":

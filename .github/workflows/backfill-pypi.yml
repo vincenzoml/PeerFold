@@ -25,4 +25,4 @@ jobs:
         run: python scripts/backfill_pypi.py
 
       - name: Verify GitHub and PyPI parity
-        run: python scripts/check_release_parity.py
+        run: python scripts/check_release_parity.py --retry-seconds 180

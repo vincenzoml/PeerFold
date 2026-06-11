@@ -67,10 +67,15 @@ def publish_tag(tag: str) -> None:
 
 def main() -> None:
     sys.path.insert(0, str(ROOT / "scripts"))
-    from check_release_parity import publishable_github_versions, pypi_release_versions, version_key
+    from check_release_parity import (
+        publishable_github_versions,
+        pypi_release_versions,
+        version_key,
+    )
 
+    publishable = publishable_github_versions()
     missing = sorted(
-        (v for v in publishable_github_versions() if v not in pypi_release_versions()),
+        (v for v in publishable if v not in pypi_release_versions(publishable)),
         key=version_key,
     )
     if not missing:

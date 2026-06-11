@@ -41,7 +41,7 @@ jobs:
       - name: Verify PyPI has release
         run: |
           TAG="${GITHUB_REF#refs/tags/v}"
-          python scripts/check_release_parity.py --require-pypi "$TAG"
+          python scripts/check_release_parity.py --require-pypi "$TAG" --retry-seconds 180
 
   github-release:
     strategy:

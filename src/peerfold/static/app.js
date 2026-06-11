@@ -113,6 +113,9 @@ const reviewerListEl = $("#reviewer-list");
 const viewerEl = $("#viewer");
 const commentsListEl = $("#comments-list");
 const commentsCountEl = $("#comments-count");
+const commentsCopyBtnEl = $("#comments-copy-btn");
+const commentsExportBtnEl = $("#comments-export-btn");
+const commentsExportMenuEl = $("#comments-export-menu");
 const commentsSelectionBarEl = $("#comments-selection-bar");
 const commentsSelectionCountEl = $("#comments-selection-count");
 const commentsCopySelectedEl = $("#comments-copy-selected");
@@ -569,6 +572,8 @@ function toast(msg, ms = 2200) {
   clearTimeout(toast._t);
   toast._t = setTimeout(() => { toastEl.hidden = true; }, ms);
 }
+
+window.peerfoldToast = toast;
 
 async function openExternalUrl(url) {
   if (window.pywebview?.api?.open_url) {
@@ -2359,6 +2364,7 @@ function updateCommentSelectionUi() {
   if (commentsSelectionCountEl) {
     commentsSelectionCountEl.textContent = `${n} selected`;
   }
+  updateCommentsActionsUi();
   for (const card of commentsListEl.querySelectorAll(".comment-card[data-id]")) {
     const id = Number(card.dataset.id);
     const picked = state.selectedCommentIds.has(id);
@@ -2367,6 +2373,31 @@ function updateCommentSelectionUi() {
     if (pick) pick.checked = picked;
   }
   renderAllHighlights();
+}
+
+function updateCommentsActionsUi() {
+  const enabled = Boolean(state.doc?.open) && state.annotations.size > 0;
+  commentsCopyBtnEl?.toggleAttribute("disabled", !enabled);
+  commentsExportBtnEl?.toggleAttribute("disabled", !enabled);
+  if (commentsCopyBtnEl) {
+    const picked = state.selectedCommentIds.size;
+    commentsCopyBtnEl.title = picked > 0
+      ? `Copy ${picked} selected comment${picked === 1 ? "" : "s"} (⌘⇧C)`
+      : "Copy all comments (⌘⇧C)";
+  }
+}
+
+function hideCommentsExportMenu() {
+  if (!commentsExportMenuEl) return;
+  commentsExportMenuEl.hidden = true;
+  commentsExportBtnEl?.setAttribute("aria-expanded", "false");
+}
+
+function toggleCommentsExportMenu() {
+  if (!commentsExportMenuEl || commentsExportBtnEl?.disabled) return;
+  const open = commentsExportMenuEl.hidden;
+  commentsExportMenuEl.hidden = !open;
+  commentsExportBtnEl?.setAttribute("aria-expanded", open ? "true" : "false");
 }
 
 function applyZoom() {
@@ -3855,6 +3886,7 @@ async function exportComments(format) {
     toast("No comments to export", 2000);
     return;
   }
+  hideCommentsExportMenu();
   const ids = exportCommentIds();
   if (!ids.length) {
     toast("No comments to export", 2000);
@@ -3864,6 +3896,7 @@ async function exportComments(format) {
     const noun = ids.length === 1 ? "comment" : "comments";
     if (!window.confirm(`Export ${ids.length} selected ${noun}?`)) return;
   }
+  toast("Preparing export…", 1500);
   try {
     const payload = await fetchCommentExport(format, ids);
     if (window.pywebview?.api?.save_export) {
@@ -4571,6 +4604,21 @@ async function init() {
   });
 
   commentsCopySelectedEl?.addEventListener("click", () => { void copyCommentsToClipboard(); });
+  commentsCopyBtnEl?.addEventListener("click", () => { void copyCommentsToClipboard(); });
+  commentsExportBtnEl?.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    toggleCommentsExportMenu();
+  });
+  commentsExportMenuEl?.querySelectorAll("button[data-format]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      void exportComments(btn.dataset.format);
+    });
+  });
+  document.addEventListener("click", (ev) => {
+    if (commentsExportMenuEl?.hidden) return;
+    if (ev.target.closest(".comments-export-wrap")) return;
+    hideCommentsExportMenu();
+  });
   commentsDeleteSelectedEl?.addEventListener("click", () => { void deleteSelectedComments(); });
   commentsClearSelectionEl?.addEventListener("click", clearCommentSelection);
   undoBtnEl?.addEventListener("click", () => { void performUndo(); });

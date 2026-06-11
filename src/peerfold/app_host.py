@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import threading
 from pathlib import Path
@@ -23,7 +24,7 @@ from peerfold.ui import (
     _set_application_icon,
     build_application_menu,
     refresh_application_menu,
-    run_on_main_thread_sync,
+    run_on_main_thread,
     webview_available,
 )
 
@@ -144,6 +145,89 @@ class AppHost:
                     return doc.api
         return None
 
+    def active_document(self) -> DocumentWindow | None:
+        import webview
+
+        docs = self.documents()
+        active = webview.active_window()
+        if active is not None:
+            for doc in docs:
+                if doc.window is active:
+                    return doc
+            for doc in docs:
+                if doc.window is not None and doc.window.uid == active.uid:
+                    return doc
+        return docs[0] if docs else None
+
+    def export_comments(self, fmt: str) -> None:
+        doc = self.active_document()
+        if doc is None or doc.window is None:
+            return
+        threading.Thread(
+            target=self._export_comments_worker,
+            args=(doc, fmt),
+            name="peerfold-export",
+            daemon=True,
+        ).start()
+
+    def copy_comments(self) -> None:
+        doc = self.active_document()
+        if doc is None or doc.window is None:
+            return
+        threading.Thread(
+            target=self._copy_comments_worker,
+            args=(doc,),
+            name="peerfold-copy-comments",
+            daemon=True,
+        ).start()
+
+    def _export_comments_worker(self, doc: DocumentWindow, fmt: str) -> None:
+        from peerfold.native_dialogs import save_text_file
+
+        try:
+            payload = doc.session.export_comments_payload(fmt)
+            result = save_text_file(doc.window, payload["suggested_name"], payload["text"], fmt)
+            if result.get("ok"):
+                count = payload["count"]
+                suffix = "" if count == 1 else "s"
+                self._notify_ui(doc, f"Exported {count} comment{suffix}", 2500)
+            elif not result.get("cancelled"):
+                self._notify_ui(doc, result.get("error") or "Could not save export", 3000)
+        except ValueError as exc:
+            self._notify_ui(doc, str(exc), 3000)
+        except Exception as exc:
+            self._notify_ui(doc, str(exc) or "Could not export comments", 3000)
+
+    def _copy_comments_worker(self, doc: DocumentWindow) -> None:
+        try:
+            payload = doc.session.export_comments_payload("text")
+            self._copy_text_to_clipboard(payload["text"])
+            count = payload["count"]
+            suffix = "" if count == 1 else "s"
+            self._notify_ui(doc, f"All {count} comment{suffix} copied", 2000)
+        except ValueError as exc:
+            self._notify_ui(doc, str(exc), 3000)
+        except Exception as exc:
+            self._notify_ui(doc, str(exc) or "Could not copy comments", 3000)
+
+    @staticmethod
+    def _copy_text_to_clipboard(text: str) -> None:
+        if sys.platform == "darwin":
+            import AppKit
+
+            pasteboard = AppKit.NSPasteboard.generalPasteboard()
+            pasteboard.clearContents()
+            pasteboard.setString_forType_(text, AppKit.NSStringPboardType)
+            return
+        raise RuntimeError("clipboard copy requires the in-app Copy button")
+
+    @staticmethod
+    def _notify_ui(doc: DocumentWindow, message: str, ms: int) -> None:
+        if doc.window is None:
+            return
+        escaped = json.dumps(message)
+        doc.window.evaluate_js(f"window.peerfoldToast?.({escaped}, {int(ms)})")
+
     def open_document(self, pdf: Path | None) -> DocumentWindow | None:
         if pdf is not None:
             pdf = pdf.expanduser().resolve()
@@ -173,9 +257,12 @@ class AppHost:
         self.menu_api._open_recent_on_main(path)
 
     def open_via_dialog(self) -> None:
-        path = run_on_main_thread_sync(self._pick_pdf_path)
-        if path:
-            self.menu_api._open_recent_on_main(path)
+        def worker() -> None:
+            path = self._pick_pdf_path()
+            if path:
+                run_on_main_thread(lambda: self.menu_api._open_recent_on_main(path))
+
+        threading.Thread(target=worker, name="peerfold-open-dialog", daemon=True).start()
 
     def open_empty_window(self) -> None:
         self.open_document(None)
@@ -202,20 +289,12 @@ class AppHost:
     def _pick_pdf_path(self) -> str | None:
         import webview
 
+        from peerfold.native_dialogs import pick_pdf_file
+
         win = webview.active_window()
         if win is None and webview.windows:
             win = webview.windows[0]
-        if win is None:
-            return None
-        result = win.create_file_dialog(
-            webview.OPEN_DIALOG,
-            allow_multiple=False,
-            file_types=("PDF files (*.pdf)", "All files (*.*)"),
-        )
-        if not result:
-            return None
-        path = result[0] if isinstance(result, (list, tuple)) else result
-        return str(Path(path).expanduser().resolve())
+        return pick_pdf_file(win)
 
     def _on_document_closed(self, doc: DocumentWindow) -> None:
         with self._docs_lock:

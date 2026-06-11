@@ -265,28 +265,13 @@ class ApplicationMenuApi:
             api.menu_select_all()
 
     def menu_copy_comments(self) -> None:
-        run_on_main_thread(self._menu_copy_comments)
-
-    def _menu_copy_comments(self) -> None:
-        api = self._host.api_for_active_window()
-        if api is not None:
-            api.menu_copy_comments()
+        self._host.copy_comments()
 
     def menu_export_markdown(self) -> None:
-        run_on_main_thread(self._menu_export_markdown)
-
-    def _menu_export_markdown(self) -> None:
-        api = self._host.api_for_active_window()
-        if api is not None:
-            api.menu_export_markdown()
+        self._host.export_comments("markdown")
 
     def menu_export_text(self) -> None:
-        run_on_main_thread(self._menu_export_text)
-
-    def _menu_export_text(self) -> None:
-        api = self._host.api_for_active_window()
-        if api is not None:
-            api.menu_export_text()
+        self._host.export_comments("text")
 
     def menu_zoom_in(self) -> None:
         run_on_main_thread(self._menu_zoom_in)
@@ -344,41 +329,14 @@ class PeerFoldApi:
         self._window = window
 
     def pick_pdf(self) -> str | None:
-        if not self._window:
-            return None
-        import webview
+        from peerfold.native_dialogs import pick_pdf_file
 
-        result = self._window.create_file_dialog(
-            webview.OPEN_DIALOG,
-            allow_multiple=False,
-            file_types=("PDF files (*.pdf)", "All files (*.*)"),
-        )
-        if not result:
-            return None
-        path = result[0] if isinstance(result, (list, tuple)) else result
-        return str(Path(path).expanduser().resolve())
+        return pick_pdf_file(self._window)
 
     def save_export(self, suggested_name: str, content: str, fmt: str) -> dict[str, Any]:
-        if not self._window:
-            return {"ok": False, "error": "no window"}
-        import webview
+        from peerfold.native_dialogs import save_text_file
 
-        if fmt == "markdown":
-            file_types = ("Markdown (*.md)", "All files (*.*)")
-            default = suggested_name if suggested_name.endswith(".md") else f"{suggested_name}.md"
-        else:
-            file_types = ("Plain text (*.txt)", "All files (*.*)")
-            default = suggested_name if suggested_name.endswith(".txt") else f"{suggested_name}.txt"
-        result = self._window.create_file_dialog(
-            webview.SAVE_DIALOG,
-            save_filename=default,
-            file_types=file_types,
-        )
-        if not result:
-            return {"ok": False, "cancelled": True}
-        path = result if isinstance(result, str) else result[0]
-        Path(path).write_text(content, encoding="utf-8")
-        return {"ok": True, "path": str(Path(path).expanduser().resolve())}
+        return save_text_file(self._window, suggested_name, content, fmt)
 
     def open_url(self, url: str) -> None:
         open_url(url)

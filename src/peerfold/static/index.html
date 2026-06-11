@@ -65,8 +65,22 @@
     <aside id="comments-pane" class="comments-pane" aria-label="Comments">
       <header class="comments-pane-head">
         <div class="comments-pane-title">
-          <strong>Comments</strong>
-          <span id="comments-count" class="muted">0</span>
+          <div class="comments-pane-title-main">
+            <strong>Comments</strong>
+            <span id="comments-count" class="muted">0</span>
+          </div>
+          <div id="comments-actions" class="comments-pane-actions">
+            <button id="comments-copy-btn" type="button" class="btn btn-ghost-sm" disabled
+                    title="Copy all comments (⌘⇧C)">Copy</button>
+            <div class="comments-export-wrap">
+              <button id="comments-export-btn" type="button" class="btn btn-ghost-sm" disabled
+                      aria-haspopup="menu" aria-expanded="false" title="Export comments">Export…</button>
+              <menu id="comments-export-menu" class="comments-export-menu" hidden>
+                <button type="button" data-format="markdown">Markdown (.md)</button>
+                <button type="button" data-format="text">Plain text (.txt)</button>
+              </menu>
+            </div>
+          </div>
           <button id="comments-collapse-btn" type="button" class="btn-pane-toggle"
                   title="Collapse comments" aria-expanded="true" aria-controls="comments-list">›</button>
         </div>

@@ -810,23 +810,28 @@ class PdfSession:
             if not annotations:
                 raise ValueError("no comments to export")
             toc = parse_toc(self.doc)
-            pages = {int(ann["page"]) for ann in annotations}
-            spans_by_page = {pno: self.page_spans(pno) for pno in pages}
-            text = export_comments(
-                doc_name=self.source.name,
-                annotations=annotations,
-                page_spans=spans_by_page,
-                toc=toc,
-                fmt=fmt,  # type: ignore[arg-type]
-            )
-            selected = ids is not None
-            return {
-                "format": fmt,
-                "text": text,
-                "count": len(annotations),
-                "selected": selected,
-                "suggested_name": suggested_export_name(self.source.name, fmt, selected=selected),
-            }
+            pages = sorted({int(ann["page"]) for ann in annotations})
+            doc_name = self.source.name
+            ann_snap = [dict(ann) for ann in annotations]
+        spans_by_page = {}
+        with self.lock:
+            for pno in pages:
+                spans_by_page[pno] = self.page_spans(pno)
+        text = export_comments(
+            doc_name=doc_name,
+            annotations=ann_snap,
+            page_spans=spans_by_page,
+            toc=toc,
+            fmt=fmt,  # type: ignore[arg-type]
+        )
+        selected = ids is not None
+        return {
+            "format": fmt,
+            "text": text,
+            "count": len(ann_snap),
+            "selected": selected,
+            "suggested_name": suggested_export_name(doc_name, fmt, selected=selected),
+        }
 
     def create_highlight(
         self,

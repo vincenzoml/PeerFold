@@ -14,6 +14,8 @@ venv/
 *.bak
 *.tmp
 docs/demo_*.pdf
+docs/sample-papers/
+.screenshot-tmp/
 .local-test
 .release-upload/
 .venv-peerfold/

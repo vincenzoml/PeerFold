@@ -170,6 +170,19 @@ body {
 
 .muted { color: var(--muted); font-size: 11px; }
 
+.window-controls {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.btn-icon {
+  min-width: 28px;
+  padding: 0 6px;
+  font-size: 15px;
+  line-height: 1;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;
@@ -542,6 +555,36 @@ body {
   gap: 0.3rem;
   max-height: min(240px, 34vh);
   overflow: auto;
+}
+
+.welcome-recent-row {
+  display: flex;
+  align-items: stretch;
+  gap: 0.25rem;
+}
+
+.welcome-recent-row .welcome-recent-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.welcome-recent-remove {
+  flex: 0 0 auto;
+  align-self: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.welcome-recent-remove:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
 .welcome-recent-item {

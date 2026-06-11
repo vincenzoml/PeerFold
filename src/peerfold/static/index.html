@@ -22,6 +22,10 @@
     </div>
     <div class="topbar-actions">
       <button id="update-btn" type="button" class="btn btn-update primary" hidden>Update</button>
+      <div class="window-controls" aria-label="Windows">
+        <button id="new-window-btn" type="button" class="btn btn-icon" title="New window (⌘⇧N)" aria-label="New window">+</button>
+        <button id="duplicate-window-btn" type="button" class="btn btn-icon" title="Duplicate window (⌘⇧D)" aria-label="Duplicate window">⧉</button>
+      </div>
       <button id="open-pdf-btn" type="button" class="btn" title="Open PDF (⌘O)">Open…</button>
       <label class="reviewer-field">
         <span>Reviewer</span>
@@ -36,10 +40,10 @@
     <span class="toolbar-label">Highlight</span>
     <div id="palette" class="palette palette-wrap" role="radiogroup" aria-label="Highlight colour"></div>
     <div class="zoom-controls" aria-label="Zoom">
-      <button id="zoom-out" type="button" class="btn zoom-btn" title="Zoom out">−</button>
+      <button id="zoom-out" type="button" class="btn zoom-btn" title="Zoom out (⌘−)">−</button>
       <span id="zoom-label" class="zoom-label">100%</span>
-      <button id="zoom-in" type="button" class="btn zoom-btn" title="Zoom in">+</button>
-      <button id="zoom-reset" type="button" class="btn zoom-btn" title="Reset zoom">⟲</button>
+      <button id="zoom-in" type="button" class="btn zoom-btn" title="Zoom in (⌘+)">+</button>
+      <button id="zoom-reset" type="button" class="btn zoom-btn" title="Actual size (⌘0)">⟲</button>
     </div>
     <div class="history-controls" aria-label="Undo and redo">
       <button id="undo-btn" type="button" class="btn zoom-btn" title="Undo (⌘Z)" disabled aria-label="Undo">↩</button>

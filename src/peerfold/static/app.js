@@ -126,6 +126,8 @@ const docTitleEl = $("#doc-title");
 const docSepEl = $("#doc-sep");
 const docMetaEl = $("#doc-meta");
 const updateBtnEl = $("#update-btn");
+const newWindowBtnEl = $("#new-window-btn");
+const duplicateWindowBtnEl = $("#duplicate-window-btn");
 const commentEditorEl = $("#comment-editor");
 const commentEditorPanelEl = commentEditorEl?.querySelector(".comment-editor-panel");
 const commentEditorBackdropEl = commentEditorEl?.querySelector(".comment-editor-backdrop");
@@ -195,6 +197,19 @@ async function waitForApp() {
   throw new Error("Timed out while opening the PDF");
 }
 
+async function removeRecentFile(path) {
+  if (!path) return;
+  try {
+    await api("/api/recent-files/remove", {
+      method: "POST",
+      body: JSON.stringify({ path }),
+    });
+    await showWelcomeScreen();
+  } catch (err) {
+    toast(err.message || "Could not remove recent file");
+  }
+}
+
 function mountWelcomeRecentList(card, files) {
   if (!files?.length) return;
   const section = document.createElement("section");
@@ -209,7 +224,7 @@ function mountWelcomeRecentList(card, files) {
   const clearBtn = document.createElement("button");
   clearBtn.type = "button";
   clearBtn.className = "welcome-recent-clear";
-  clearBtn.textContent = "Clear";
+  clearBtn.textContent = "Clear all";
   clearBtn.addEventListener("click", () => {
     void (async () => {
       try {
@@ -226,6 +241,7 @@ function mountWelcomeRecentList(card, files) {
   list.className = "welcome-recent-list";
   for (const file of files) {
     const item = document.createElement("li");
+    item.className = "welcome-recent-row";
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = "welcome-recent-item";
@@ -245,7 +261,17 @@ function mountWelcomeRecentList(card, files) {
     btn.addEventListener("click", () => {
       if (file.path) void openPdfByPath(file.path);
     });
-    item.append(btn);
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "welcome-recent-remove";
+    removeBtn.title = "Remove from recent";
+    removeBtn.setAttribute("aria-label", `Remove ${file.name || basename(file.path)} from recent`);
+    removeBtn.textContent = "×";
+    removeBtn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void removeRecentFile(file.path);
+    });
+    item.append(btn, removeBtn);
     list.append(item);
   }
 
@@ -354,8 +380,64 @@ function wireNativeDropPaths() {
     const action = ev.detail?.action;
     if (action === "undo") void performUndo();
     else if (action === "redo") void performRedo();
+    else if (action === "copy") void copySelectedText();
+    else if (action === "select-all") selectAllComments();
+    else if (action === "zoom-in") zoomFromShortcut("in");
+    else if (action === "zoom-out") zoomFromShortcut("out");
+    else if (action === "zoom-reset") zoomFromShortcut("reset");
     else if (action === "check-updates") void checkForUpdates({ force: true });
   });
+}
+
+function nativeWindowsAvailable() {
+  return Boolean(window.pywebview?.api?.new_window);
+}
+
+function requestNewWindow() {
+  if (window.pywebview?.api?.new_window) {
+    window.pywebview.api.new_window();
+    return;
+  }
+  toast("New window requires the desktop app");
+}
+
+function requestDuplicateWindow() {
+  if (window.pywebview?.api?.duplicate_window) {
+    window.pywebview.api.duplicate_window();
+    return;
+  }
+  toast("Duplicate window requires the desktop app");
+}
+
+function isEditableTarget(ev) {
+  const t = ev.target;
+  if (!t || typeof t.closest !== "function") return false;
+  if (t.closest("textarea, input[type='text'], input[type='search'], input:not([type]), select")) {
+    return true;
+  }
+  return Boolean(!commentEditorEl?.hidden && document.activeElement === commentEditorTa);
+}
+
+function isModKey(ev) {
+  return ev.metaKey || ev.ctrlKey;
+}
+
+function zoomFromShortcut(mode) {
+  if (!viewerEl) return;
+  const r = viewerEl.getBoundingClientRect();
+  const x = r.left + r.width / 2;
+  const y = r.top + r.height / 2;
+  if (mode === "in") zoomBy(ZOOM_STEP, x, y);
+  else if (mode === "out") zoomBy(1 / ZOOM_STEP, x, y);
+  else setZoom(1, x, y, { deferEnd: false });
+}
+
+function selectAllComments() {
+  if (!isEditableTarget({ target: document.activeElement })) {
+    state.selectedCommentIds = new Set(sortedAnnotations().map((ann) => ann.id));
+    state.lastSelectedCommentId = sortedAnnotations().at(-1)?.id ?? null;
+    updateCommentSelectionUi();
+  }
 }
 
 async function nativePdfPickerAvailable() {
@@ -1215,9 +1297,8 @@ function spanRangeOrdered(spans, idA, idB) {
   return spans.slice(lo, hi + 1).map((s) => s.id);
 }
 
-function textFromSpanIds(meta, spanIds) {
-  const ordered = spanIds
-    .map((id) => meta.spans[id])
+function joinSpanTexts(spans) {
+  const ordered = [...spans]
     .filter(Boolean)
     .sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
   let out = "";
@@ -1230,6 +1311,13 @@ function textFromSpanIds(meta, spanIds) {
     lastLineY = y;
   }
   return out;
+}
+
+function textFromSpanIds(meta, spanIds) {
+  const spans = spanIds
+    .map((id) => meta.spans.find((s) => s.id === id))
+    .filter(Boolean);
+  return joinSpanTexts(spans);
 }
 
 function charIndexAtX(span, x) {
@@ -2844,7 +2932,7 @@ function excerptFor(ann) {
   if (!meta || !ann.rects?.length) return "";
   const hits = meta.spans.filter((sp) =>
     ann.rects.some((rect) => rectsOverlap(sp.bbox, rect)));
-  const text = hits.map((h) => h.text).join("");
+  const text = joinSpanTexts(hits);
   if (!text) return "Highlighted text";
   return text.length > 160 ? `${text.slice(0, 160)}…` : text;
 }
@@ -3718,7 +3806,7 @@ async function copyHighlightText(ann) {
   const hits = meta.spans.filter((sp) =>
     ann.rects.some(([x0, y0, x1, y1]) =>
       sp.bbox[0] >= x0 - 1 && sp.bbox[2] <= x1 + 1 && sp.bbox[1] >= y0 - 1 && sp.bbox[3] <= y1 + 1));
-  await navigator.clipboard.writeText(hits.map((h) => h.text).join(""));
+  await navigator.clipboard.writeText(joinSpanTexts(hits));
   toast("Highlight text copied");
 }
 
@@ -4267,6 +4355,13 @@ async function init() {
     history.replaceState(null, "", cleanUrl);
   }
   wireOpenPdf();
+  if (nativeWindowsAvailable()) {
+    newWindowBtnEl?.addEventListener("click", () => requestNewWindow());
+    duplicateWindowBtnEl?.addEventListener("click", () => requestDuplicateWindow());
+  } else {
+    newWindowBtnEl?.remove();
+    duplicateWindowBtnEl?.remove();
+  }
   state.doc = await waitForApp();
   if (state.doc?.dev) devLog("server dev mode enabled");
   setServerRevision(state.doc.revision ?? 0);
@@ -4295,8 +4390,8 @@ async function init() {
 
   window.addEventListener("keydown", (ev) => {
     if (routeDraftTyping(ev)) return;
-    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "z") {
-      if (ev.target.closest("#reviewer")) return;
+    if (isModKey(ev) && ev.key.toLowerCase() === "z") {
+      if (isEditableTarget(ev)) return;
       const redo = ev.shiftKey;
       if (redo && !state.redoStack.length) return;
       if (!redo && !state.undoStack.length) return;
@@ -4305,14 +4400,41 @@ async function init() {
       else void performUndo();
       return;
     }
-    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "o") {
+    if (isModKey(ev) && ev.key.toLowerCase() === "o") {
       ev.preventDefault();
       void pickAndOpenPdf();
       return;
     }
-    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "c") {
-      if (ev.target.closest("textarea, input, select")) return;
-      if (!commentEditorEl?.hidden && document.activeElement === commentEditorTa) return;
+    if (isModKey(ev) && ev.shiftKey && ev.key.toLowerCase() === "n") {
+      ev.preventDefault();
+      requestNewWindow();
+      return;
+    }
+    if (isModKey(ev) && ev.shiftKey && ev.key.toLowerCase() === "d") {
+      ev.preventDefault();
+      requestDuplicateWindow();
+      return;
+    }
+    if (isModKey(ev) && (ev.key === "=" || ev.key === "+")) {
+      if (isEditableTarget(ev)) return;
+      ev.preventDefault();
+      zoomFromShortcut("in");
+      return;
+    }
+    if (isModKey(ev) && ev.key === "-") {
+      if (isEditableTarget(ev)) return;
+      ev.preventDefault();
+      zoomFromShortcut("out");
+      return;
+    }
+    if (isModKey(ev) && ev.key === "0") {
+      if (isEditableTarget(ev)) return;
+      ev.preventDefault();
+      zoomFromShortcut("reset");
+      return;
+    }
+    if (isModKey(ev) && ev.key.toLowerCase() === "c") {
+      if (isEditableTarget(ev)) return;
       if (currentTextSelection()) {
         ev.preventDefault();
         void copySelectedText();
@@ -4336,17 +4458,14 @@ async function init() {
       }
       return;
     }
-    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "a") {
-      if (ev.target.closest("textarea, input, select")) return;
-      if (!commentEditorEl?.hidden && document.activeElement === commentEditorTa) return;
+    if (isModKey(ev) && ev.key.toLowerCase() === "a") {
+      if (isEditableTarget(ev)) return;
       ev.preventDefault();
-      state.selectedCommentIds = new Set(sortedAnnotations().map((ann) => ann.id));
-      state.lastSelectedCommentId = sortedAnnotations().at(-1)?.id ?? null;
-      updateCommentSelectionUi();
+      selectAllComments();
       return;
     }
     if ((ev.key === "Delete" || ev.key === "Backspace") && state.selectedCommentIds.size > 0) {
-      if (ev.target.closest("textarea, input, select")) return;
+      if (isEditableTarget(ev)) return;
       if (!commentEditorEl?.hidden) return;
       ev.preventDefault();
       void deleteSelectedComments();

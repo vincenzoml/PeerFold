@@ -180,6 +180,25 @@ class AppHost:
     def open_empty_window(self) -> None:
         self.open_document(None)
 
+    def duplicate_active_window(self) -> None:
+        import webview
+
+        active = webview.active_window()
+        for doc in self.documents():
+            if doc.window is active or (
+                active is not None
+                and doc.window is not None
+                and doc.window.uid == active.uid
+            ):
+                info = doc.session.document_info()
+                source = str(info.get("source") or "").strip()
+                if info.get("open") and source:
+                    self.open_document(Path(source))
+                else:
+                    self.open_empty_window()
+                return
+        self.open_empty_window()
+
     def _pick_pdf_path(self) -> str | None:
         import webview
 
@@ -226,9 +245,13 @@ class AppHost:
             self._started = True
             try:
                 if sys.platform == "darwin":
-                    from peerfold.macos_events import install_dock_reopen_handler
+                    from peerfold.macos_events import (
+                        install_dock_menu_handler,
+                        install_dock_reopen_handler,
+                    )
 
                     install_dock_reopen_handler(self.open_empty_window)
+                    install_dock_menu_handler(self.menu_api)
             except Exception:
                 pass
 

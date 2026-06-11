@@ -248,6 +248,59 @@ class ApplicationMenuApi:
         if api is not None:
             api.menu_redo()
 
+    def menu_copy(self) -> None:
+        run_on_main_thread(self._menu_copy)
+
+    def _menu_copy(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_copy()
+
+    def menu_select_all(self) -> None:
+        run_on_main_thread(self._menu_select_all)
+
+    def _menu_select_all(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_select_all()
+
+    def menu_zoom_in(self) -> None:
+        run_on_main_thread(self._menu_zoom_in)
+
+    def _menu_zoom_in(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_zoom_in()
+
+    def menu_zoom_out(self) -> None:
+        run_on_main_thread(self._menu_zoom_out)
+
+    def _menu_zoom_out(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_zoom_out()
+
+    def menu_zoom_reset(self) -> None:
+        run_on_main_thread(self._menu_zoom_reset)
+
+    def _menu_zoom_reset(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_zoom_reset()
+
+    def menu_duplicate_window(self) -> None:
+        run_on_main_thread(self._menu_duplicate_window)
+
+    def _menu_duplicate_window(self) -> None:
+        self._host.duplicate_active_window()
+
+    def remove_recent(self, path: str) -> None:
+        run_on_main_thread(lambda: self._remove_recent_on_main(path))
+
+    def _remove_recent_on_main(self, path: str) -> None:
+        remove_recent_file(Path(path).expanduser())
+        refresh_application_menu_for_host()
+
     def check_for_updates(self) -> None:
         from peerfold.core import update_check_payload
 
@@ -306,6 +359,43 @@ class PeerFoldApi:
 
     def menu_redo(self) -> None:
         self._dispatch("redo")
+
+    def menu_copy(self) -> None:
+        self._dispatch("copy")
+
+    def menu_select_all(self) -> None:
+        self._dispatch("select-all")
+
+    def menu_zoom_in(self) -> None:
+        self._dispatch("zoom-in")
+
+    def menu_zoom_out(self) -> None:
+        self._dispatch("zoom-out")
+
+    def menu_zoom_reset(self) -> None:
+        self._dispatch("zoom-reset")
+
+    def new_window(self) -> None:
+        run_on_main_thread(self._new_window)
+
+    def _new_window(self) -> None:
+        try:
+            from peerfold.app_host import AppHost
+
+            AppHost.instance().open_empty_window()
+        except RuntimeError:
+            pass
+
+    def duplicate_window(self) -> None:
+        run_on_main_thread(self._duplicate_window)
+
+    def _duplicate_window(self) -> None:
+        try:
+            from peerfold.app_host import AppHost
+
+            AppHost.instance().duplicate_active_window()
+        except RuntimeError:
+            pass
 
     def check_for_updates(self) -> None:
         from peerfold.core import update_check_payload
@@ -371,12 +461,39 @@ def build_application_menu(api: ApplicationMenuApi):
         [
             MenuAction("Open…", api.menu_open),
             MenuAction("New Window", api.menu_new_window),
+            MenuAction("Duplicate Window", api.menu_duplicate_window),
             MenuSeparator(),
             Menu("Open Recent", recent_items),
         ],
     )
 
-    return [
+    edit_menu = Menu(
+        "Edit",
+        [
+            MenuAction("Undo", api.menu_undo),
+            MenuAction("Redo", api.menu_redo),
+            MenuSeparator(),
+            MenuAction("Copy", api.menu_copy),
+            MenuAction("Select All Comments", api.menu_select_all),
+        ],
+    )
+    view_menu = Menu(
+        "View",
+        [
+            MenuAction("Zoom In", api.menu_zoom_in),
+            MenuAction("Zoom Out", api.menu_zoom_out),
+            MenuAction("Actual Size", api.menu_zoom_reset),
+        ],
+    )
+    window_menu = Menu(
+        "Window",
+        [
+            MenuAction("New Window", api.menu_new_window),
+            MenuAction("Duplicate Window", api.menu_duplicate_window),
+        ],
+    )
+
+    menus = [
         Menu(
             "__app__",
             [
@@ -386,6 +503,10 @@ def build_application_menu(api: ApplicationMenuApi):
             ],
         ),
         file_menu,
+    ]
+    if sys.platform != "darwin":
+        menus.extend([edit_menu, view_menu, window_menu])
+    menus.append(
         Menu(
             "Help",
             [
@@ -393,7 +514,8 @@ def build_application_menu(api: ApplicationMenuApi):
                 MenuAction("Check for Updates…", api.check_for_updates),
             ],
         ),
-    ]
+    )
+    return menus
 
 
 def refresh_application_menu(api: ApplicationMenuApi) -> None:
@@ -401,13 +523,9 @@ def refresh_application_menu(api: ApplicationMenuApi) -> None:
 
 
 def _refresh_application_menu_on_main(api: ApplicationMenuApi) -> None:
-    from peerfold.macos_menu import refresh_open_recent_menu
+    from peerfold.macos_menu import refresh_application_menus
 
-    refresh_open_recent_menu(
-        list_recent_paths(),
-        api._open_recent_on_main,
-        clear_handler=api._clear_recent,
-    )
+    refresh_application_menus(api)
 
 
 def _set_macos_dock_name(name: str = "PeerFold") -> None:

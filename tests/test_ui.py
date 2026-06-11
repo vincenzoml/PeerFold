@@ -1,3 +1,5 @@
+import sys
+
 from peerfold.ui import (
     ApplicationMenuApi,
     PeerFoldApi,
@@ -65,9 +67,14 @@ def test_build_application_menu_has_file_and_help(monkeypatch, tmp_path):
     sub_titles = [item.title for item in file_menu.items if hasattr(item, "title")]
     assert "Open Recent" in sub_titles
     assert "New Window" in sub_titles
+    assert "Duplicate Window" in sub_titles
     recent_menu = next(item for item in file_menu.items if getattr(item, "title", None) == "Open Recent")
     recent_titles = [item.title for item in recent_menu.items if hasattr(item, "title")]
     assert "Clear Menu" in recent_titles
+    if sys.platform != "darwin":
+        assert "Edit" in titles
+        assert "View" in titles
+        assert "Window" in titles
 
 
 def test_webview_help_ssh_port_forward(monkeypatch):
@@ -108,6 +115,34 @@ def test_application_menu_check_for_updates_shows_native_dialog(monkeypatch):
     api = ApplicationMenuApi(_MenuHost())
     api.check_for_updates()
     assert shown
+
+
+def test_remove_recent_file(monkeypatch, tmp_path):
+    removed = []
+
+    class _Host:
+        def open_via_dialog(self):
+            pass
+
+        def open_empty_window(self):
+            pass
+
+        def open_document_path(self, path):
+            pass
+
+        def duplicate_active_window(self):
+            pass
+
+        def api_for_active_window(self):
+            return None
+
+    monkeypatch.setattr(
+        "peerfold.ui.remove_recent_file",
+        lambda path: removed.append(path) or [],
+    )
+    api = ApplicationMenuApi(_Host())
+    api._remove_recent_on_main(str(tmp_path / "gone.pdf"))
+    assert removed
 
 
 def test_open_recent_spawns_new_window(monkeypatch, tmp_path):

@@ -1414,6 +1414,15 @@ class ReviewHandler(BaseHTTPRequestHandler):
 
             clear_recent_files()
             return self._json(200, {"ok": True})
+        if path == "/api/recent-files/remove":
+            from peerfold.recent_files import list_payload, remove as remove_recent_file
+
+            data = self._read_json()
+            raw = str(data.get("path") or "").strip()
+            if not raw:
+                return self._json(400, {"error": "path required"})
+            remove_recent_file(Path(raw))
+            return self._json(200, {"files": list_payload()})
         if path.startswith("/api/") and self._guard_document():
             return
         try:

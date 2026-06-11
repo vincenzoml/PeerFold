@@ -36,6 +36,8 @@ def test_make_app_bundle_includes_icon(tmp_path):
     make_app_bundle(app_dir, bundle, "peerfold-macos", read_version(REPO))
 
     plist = plistlib.loads((bundle / "Contents" / "Info.plist").read_bytes())
+    assert plist.get("CFBundleName") == "PeerFold"
+    assert plist.get("CFBundleDisplayName") == "PeerFold"
     assert plist.get("CFBundleIconFile") == "PeerFold"
     icns = bundle / "Contents" / "Resources" / "PeerFold.icns"
     assert icns.is_file()

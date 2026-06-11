@@ -12,6 +12,10 @@ from peerfold.core import default_reviewer
 
 
 def main() -> None:
+    if sys.platform == "darwin":
+        from peerfold.ui import _set_macos_dock_name
+
+        _set_macos_dock_name()
     if getattr(sys, "frozen", False):
         print("PeerFold loading…", file=sys.stderr, flush=True)
     ap = argparse.ArgumentParser(

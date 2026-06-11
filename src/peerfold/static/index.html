@@ -11,16 +11,14 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">
+    <div class="topbar-leading" aria-live="polite">
       <img class="brand-mark" src="/static/icon-32.png" width="20" height="20" alt="">
-      <div class="brand-text">
-        <strong id="doc-name">PeerFold</strong>
-        <div id="version-strip" class="version-strip" aria-live="polite">
-          <span id="app-version-current" class="app-version muted"></span>
-          <span id="app-version-available" class="app-version-available muted" hidden></span>
-        </div>
-        <span id="doc-meta" class="muted"></span>
-      </div>
+      <span class="app-brand">PeerFold</span>
+      <span id="app-version-current" class="app-version-badge" title="App version"></span>
+      <span id="app-version-available" class="app-version-available" hidden></span>
+      <span id="doc-sep" class="topbar-sep" hidden aria-hidden="true">·</span>
+      <span id="doc-title" class="doc-title" hidden></span>
+      <span id="doc-meta" class="doc-meta muted"></span>
     </div>
     <div class="topbar-actions">
       <button id="update-btn" type="button" class="btn btn-update primary" hidden>Update</button>

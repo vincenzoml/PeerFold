@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from peerfold.recent_files import add, clear, list_paths, menu_label, remove
+from peerfold.recent_files import add, clear, folder_short, list_paths, list_payload, menu_label, remove
 
 
 def test_recent_files_roundtrip(tmp_path, monkeypatch):
@@ -61,3 +61,22 @@ def test_recent_menu_label_uses_home(tmp_path, monkeypatch):
     label = menu_label(pdf)
     assert "paper.pdf" in label
     assert "docs" in label
+
+
+def test_list_payload(tmp_path, monkeypatch):
+    store = tmp_path / "recent.json"
+    monkeypatch.setattr("peerfold.recent_files._store_path", lambda: store)
+    monkeypatch.setattr("peerfold.recent_files.note_system_recent", lambda _path: None)
+    monkeypatch.setattr("peerfold.recent_files._refresh_menu", lambda: None)
+    monkeypatch.setattr("peerfold.recent_files.Path.home", lambda: tmp_path)
+
+    pdf = tmp_path / "papers" / "draft.pdf"
+    pdf.parent.mkdir(parents=True)
+    pdf.write_bytes(b"%PDF-1.4")
+    add(pdf)
+
+    payload = list_payload()
+    assert len(payload) == 1
+    assert payload[0]["name"] == "draft.pdf"
+    assert payload[0]["path"] == str(pdf.resolve())
+    assert folder_short(pdf.resolve()) == "~/papers"

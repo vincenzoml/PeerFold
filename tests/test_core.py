@@ -6,6 +6,7 @@ import pytest
 from peerfold import __version__
 from peerfold.core import (
     PALETTE,
+    PdfSession,
     annotated_path,
     app_version,
     build_citation_index,
@@ -163,3 +164,32 @@ def test_hex_to_rgb_roundtrip():
 def test_nearest_palette_name_returns_hex_for_unknown():
     custom = (0.12, 0.34, 0.56)
     assert nearest_palette_name(custom) == rgb_to_hex(custom)
+
+
+def test_batch_update_colors(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    fitz = import_fitz()
+    pdf = tmp_path / "batch.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    for y in (72, 96, 120):
+        page.insert_text((72, y), "highlight target")
+    doc.save(pdf)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    try:
+        spans = session.page_spans(0)
+        assert len(spans) >= 3
+        ids = []
+        for i in range(3):
+            created = session.create_highlight(0, [i], "yellow", f"note {i}")
+            ids.append(created["id"])
+        result = session.batch_update_colors(ids, "blue")
+        assert len(result["items"]) == 3
+        assert all(item["color"] == "blue" for item in result["items"])
+        listed = session.list_annotations()
+        assert len(listed) == 3
+        assert all(item["color"] == "blue" for item in listed)
+    finally:
+        session.close()

@@ -1,6 +1,7 @@
 from peerfold.ui import (
     ApplicationMenuApi,
     PeerFoldApi,
+    _set_macos_dock_name,
     build_application_menu,
     headless_environment,
     run_on_main_thread,
@@ -23,6 +24,11 @@ class _MenuHost:
 
     def api_for_active_window(self):
         return None
+
+
+def test_set_macos_dock_name_noop_off_darwin(monkeypatch):
+    monkeypatch.setattr("peerfold.ui.sys.platform", "linux")
+    _set_macos_dock_name()
 
 
 def test_ssh_session(monkeypatch):

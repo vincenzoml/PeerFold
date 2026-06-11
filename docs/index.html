@@ -56,7 +56,7 @@
 
     .hero {
       text-align: center;
-      padding: 72px 0 48px;
+      padding: 72px 0 40px;
     }
     .hero h1 {
       font-size: clamp(40px, 7vw, 64px);
@@ -70,7 +70,7 @@
     .hero-tag { color: var(--accent); }
     .hero .sub {
       margin: 20px auto 0;
-      max-width: 28em;
+      max-width: 26em;
       font-size: clamp(17px, 2.5vw, 21px);
       line-height: 1.381;
       font-weight: 400;
@@ -78,30 +78,174 @@
       color: var(--soft);
     }
 
-    .visual {
-      padding: 8px 0 88px;
+    .folder {
+      text-align: center;
+      padding: 24px 0 72px;
     }
-    .visual-frame {
-      border-radius: 18px;
+    .folder h2 {
+      font-size: clamp(28px, 4.5vw, 40px);
+      line-height: 1.1;
+      font-weight: 600;
+      letter-spacing: -0.025em;
+      max-width: 16ch;
+      margin: 0 auto 12px;
+    }
+    .folder .lead {
+      margin: 0 auto 28px;
+      max-width: 24em;
+      font-size: 17px;
+      line-height: 1.45;
+      color: var(--soft);
+    }
+    .folder-cmd {
+      max-width: 640px;
+      margin: 0 auto;
+    }
+    .folder-run {
+      margin-top: 14px;
+      font-size: 14px;
+      color: var(--faint);
+      font-family: var(--mono);
+    }
+
+    .gallery {
+      padding: 0 0 80px;
+    }
+    .gallery-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 10px;
+    }
+    @media (max-width: 900px) {
+      .gallery-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+    @media (max-width: 520px) {
+      .gallery-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    .gallery-thumb {
+      display: block;
+      width: 100%;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 12px;
       overflow: hidden;
       background: #111;
-      box-shadow:
-        0 2px 8px rgba(0, 0, 0, 0.4),
-        0 24px 80px rgba(0, 0, 0, 0.55);
+      cursor: zoom-in;
+      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
     }
-    .visual-frame img {
+    .gallery-thumb:hover {
+      border-color: rgba(126, 184, 255, 0.35);
+      box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
+      transform: translateY(-2px);
+    }
+    .gallery-thumb:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.45);
+      outline-offset: 2px;
+    }
+    .gallery-thumb img {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 16 / 10;
+      object-fit: cover;
+      object-position: top;
+    }
+
+    .portal {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(0, 0, 0, 0.82);
+      backdrop-filter: blur(24px) saturate(140%);
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity 0.28s ease, visibility 0.28s;
+    }
+    .portal.is-open {
+      opacity: 1;
+      visibility: visible;
+    }
+    .portal-panel {
+      width: min(1120px, 100%);
+      transform: scale(0.96) translateY(8px);
+      transition: transform 0.28s ease;
+    }
+    .portal.is-open .portal-panel {
+      transform: scale(1) translateY(0);
+    }
+    .portal-frame {
+      border-radius: 16px;
+      overflow: hidden;
+      background: #0a0a0a;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 32px 120px rgba(0, 0, 0, 0.65);
+    }
+    .portal-frame img {
       display: block;
       width: 100%;
       height: auto;
     }
+    .portal-caption {
+      margin-top: 14px;
+      text-align: center;
+      font-size: 14px;
+      color: var(--soft);
+    }
+    .portal-close,
+    .portal-nav {
+      position: fixed;
+      border: none;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--fg);
+      border-radius: 999px;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    .portal-close {
+      top: 20px;
+      right: 20px;
+      width: 40px;
+      height: 40px;
+      font-size: 22px;
+      line-height: 1;
+    }
+    .portal-nav {
+      top: 50%;
+      transform: translateY(-50%);
+      width: 44px;
+      height: 44px;
+      font-size: 24px;
+    }
+    .portal-nav:hover,
+    .portal-close:hover {
+      background: rgba(255, 255, 255, 0.14);
+    }
+    .portal-prev { left: 20px; }
+    .portal-next { right: 20px; }
 
     .install {
-      padding-bottom: 88px;
+      padding: 8px 0 88px;
+      text-align: center;
+    }
+    .install h2 {
+      font-size: clamp(24px, 3.5vw, 32px);
+      line-height: 1.15;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin-bottom: 28px;
+      color: var(--soft);
     }
     .install-grid {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       gap: 16px;
+      max-width: 720px;
+      margin: 0 auto;
+      text-align: left;
     }
     @media (max-width: 734px) {
       .install-grid { grid-template-columns: 1fr; }
@@ -115,20 +259,19 @@
       background: var(--fill);
       border: 1px solid var(--line);
     }
-    .install-card h2 {
+    .install-card h3 {
       font-size: 15px;
       line-height: 1.2;
       font-weight: 600;
       letter-spacing: -0.01em;
       color: var(--soft);
     }
-    .install-note {
-      margin: 0;
+    .install-more {
+      margin-top: 20px;
       font-size: 13px;
-      line-height: 1.45;
-      color: var(--soft);
+      color: var(--faint);
     }
-    .install-note a { color: var(--accent); }
+    .install-more a { color: var(--accent); }
     .copy-cmd {
       display: block;
       width: 100%;
@@ -195,57 +338,132 @@
         <span class="hero-q">PDF review?</span><br>
         <span class="hero-tag">Click, type, done.</span>
       </h1>
-      <p class="sub">Or drop it into your paper sources so every co-author can review — no install required.</p>
+      <p class="sub">Highlights and comments export as standard PDF annotations.</p>
     </section>
 
-    <section class="shell visual">
-      <div class="visual-frame">
-        <img src="hero.png" width="1440" height="900" alt="PeerFold">
+    <section class="shell folder">
+      <h2>Drop one file into your paper folder</h2>
+      <p class="lead">Co-authors run it from the repo. No install step.</p>
+      <div class="folder-cmd">
+        <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py">
+          <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py</code>
+          <span class="copy-label" aria-live="polite"></span>
+        </button>
+        <p class="folder-run">./peerfold.py draft.pdf</p>
+      </div>
+    </section>
+
+    <section class="shell gallery" aria-label="Screenshots">
+      <div class="gallery-grid">
+        <button type="button" class="gallery-thumb" data-shot="0" aria-label="Open welcome screen">
+          <img src="shots/01-welcome.png" width="288" height="180" alt="Welcome screen with recent files" loading="lazy">
+        </button>
+        <button type="button" class="gallery-thumb" data-shot="1" aria-label="Open review workspace">
+          <img src="shots/02-workspace.png" width="288" height="180" alt="PDF review workspace" loading="lazy">
+        </button>
+        <button type="button" class="gallery-thumb" data-shot="2" aria-label="Open comment editor">
+          <img src="shots/03-editor.png" width="288" height="180" alt="Comment editor with color palette" loading="lazy">
+        </button>
+        <button type="button" class="gallery-thumb" data-shot="3" aria-label="Open annotations view">
+          <img src="shots/04-annotations.png" width="288" height="180" alt="Highlighted PDF annotations" loading="lazy">
+        </button>
+        <button type="button" class="gallery-thumb" data-shot="4" aria-label="Open comments list">
+          <img src="shots/05-comments.png" width="288" height="180" alt="Comments sidebar" loading="lazy">
+        </button>
       </div>
     </section>
 
     <section class="shell install">
+      <h2>Or install on your computer</h2>
       <div class="install-grid">
         <article class="install-card">
-          <h2>mac or linux</h2>
+          <h3>mac or linux</h3>
           <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash">
             <code>curl -fsSL https://vincenzoml.github.io/PeerFold/install.sh | bash</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
         </article>
-
         <article class="install-card">
-          <h2>windows app</h2>
+          <h3>windows</h3>
           <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex">
             <code>irm https://vincenzoml.github.io/PeerFold/install.ps1 | iex</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
         </article>
-
-        <article class="install-card">
-          <h2>add to any folder (win, linux and mac)</h2>
-          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py">
-            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py</code>
-            <span class="copy-label" aria-live="polite"></span>
-          </button>
-          <p class="install-note">Then run <code>./peerfold.py your-paper.pdf</code> (add <code>--reviewer AB</code> if you like).</p>
-          <p class="install-note"><a href="peerfold.py">peerfold.py</a> — shared package cache at <code>~/.local/share/peerfold/cache</code>.</p>
-        </article>
-
-        <article class="install-card">
-          <h2>install via python</h2>
-          <button type="button" class="copy-cmd" data-copy="python3 -m pip install --user peerfold-review">
-            <code>python3 -m pip install --user peerfold-review</code>
-            <span class="copy-label" aria-live="polite"></span>
-          </button>
-        </article>
       </div>
+      <p class="install-more">
+        <a href="https://pypi.org/project/peerfold-review/">pip install peerfold-review</a>
+        ·
+        <a href="https://github.com/vincenzoml/PeerFold/releases/latest">download app</a>
+      </p>
     </section>
   </main>
+
+  <div class="portal" id="portal" hidden>
+    <button type="button" class="portal-close" id="portal-close" aria-label="Close">×</button>
+    <button type="button" class="portal-nav portal-prev" id="portal-prev" aria-label="Previous">‹</button>
+    <button type="button" class="portal-nav portal-next" id="portal-next" aria-label="Next">›</button>
+    <div class="portal-panel">
+      <div class="portal-frame">
+        <img id="portal-img" src="" width="1120" height="700" alt="">
+      </div>
+      <p class="portal-caption" id="portal-caption"></p>
+    </div>
+  </div>
 
   <footer class="shell">Copyright © 2026 PeerFold. MIT License.</footer>
 
   <script>
+    const shots = [
+      { src: "shots/01-welcome.png", alt: "Welcome screen with recent files", caption: "Open recent papers or drop a PDF." },
+      { src: "shots/02-workspace.png", alt: "PDF review workspace", caption: "Read, highlight, and comment in one window." },
+      { src: "shots/03-editor.png", alt: "Comment editor with color palette", caption: "Pick a color and write your note." },
+      { src: "shots/04-annotations.png", alt: "Highlighted PDF annotations", caption: "Standard PDF highlights on the page." },
+      { src: "shots/05-comments.png", alt: "Comments sidebar", caption: "All comments in one list." },
+    ];
+
+    const portal = document.getElementById("portal");
+    const portalImg = document.getElementById("portal-img");
+    const portalCaption = document.getElementById("portal-caption");
+    let active = 0;
+
+    function openPortal(index) {
+      active = (index + shots.length) % shots.length;
+      const shot = shots[active];
+      portalImg.src = shot.src;
+      portalImg.alt = shot.alt;
+      portalCaption.textContent = shot.caption;
+      portal.hidden = false;
+      requestAnimationFrame(() => portal.classList.add("is-open"));
+      document.body.style.overflow = "hidden";
+    }
+
+    function closePortal() {
+      portal.classList.remove("is-open");
+      document.body.style.overflow = "";
+      setTimeout(() => { portal.hidden = true; }, 280);
+    }
+
+    function stepPortal(delta) {
+      openPortal(active + delta);
+    }
+
+    for (const btn of document.querySelectorAll(".gallery-thumb")) {
+      btn.addEventListener("click", () => openPortal(Number(btn.dataset.shot || 0)));
+    }
+    document.getElementById("portal-close").addEventListener("click", closePortal);
+    document.getElementById("portal-prev").addEventListener("click", () => stepPortal(-1));
+    document.getElementById("portal-next").addEventListener("click", () => stepPortal(1));
+    portal.addEventListener("click", (ev) => {
+      if (ev.target === portal) closePortal();
+    });
+    document.addEventListener("keydown", (ev) => {
+      if (portal.hidden) return;
+      if (ev.key === "Escape") closePortal();
+      if (ev.key === "ArrowLeft") stepPortal(-1);
+      if (ev.key === "ArrowRight") stepPortal(1);
+    });
+
     for (const btn of document.querySelectorAll(".copy-cmd")) {
       btn.addEventListener("click", async () => {
         const label = btn.querySelector(".copy-label");

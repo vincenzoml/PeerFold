@@ -14,6 +14,7 @@ const state = {
   locateTimer: null,
   pendingNote: null,
   draft: null,
+  textSelection: null,
   loadingPages: new Set(),
   pageLoadGen: new Map(),
   pageLoadQueue: [],
@@ -103,6 +104,9 @@ const ctxMenu = $("#ctx-menu");
 const toastEl = $("#toast");
 const appVersionCurrentEl = $("#app-version-current");
 const appVersionAvailableEl = $("#app-version-available");
+const docTitleEl = $("#doc-title");
+const docSepEl = $("#doc-sep");
+const docMetaEl = $("#doc-meta");
 const updateBtnEl = $("#update-btn");
 const commentEditorEl = $("#comment-editor");
 const commentEditorPanelEl = commentEditorEl?.querySelector(".comment-editor-panel");
@@ -170,28 +174,94 @@ async function waitForApp() {
   throw new Error("Timed out while opening the PDF");
 }
 
-function showWelcomeScreen() {
+function mountWelcomeRecentList(card, files) {
+  if (!files?.length) return;
+  const section = document.createElement("section");
+  section.className = "welcome-recent";
+  section.setAttribute("aria-label", "Recent files");
+
+  const head = document.createElement("div");
+  head.className = "welcome-recent-head";
+  const heading = document.createElement("h3");
+  heading.className = "welcome-recent-heading";
+  heading.textContent = "Recent";
+  const clearBtn = document.createElement("button");
+  clearBtn.type = "button";
+  clearBtn.className = "welcome-recent-clear";
+  clearBtn.textContent = "Clear";
+  clearBtn.addEventListener("click", () => {
+    void (async () => {
+      try {
+        await api("/api/recent-files/clear", { method: "POST" });
+        await showWelcomeScreen();
+      } catch (err) {
+        toast(err.message || "Could not clear recent files");
+      }
+    })();
+  });
+  head.append(heading, clearBtn);
+
+  const list = document.createElement("ul");
+  list.className = "welcome-recent-list";
+  for (const file of files) {
+    const item = document.createElement("li");
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "welcome-recent-item";
+    const icon = document.createElement("span");
+    icon.className = "welcome-recent-icon";
+    icon.setAttribute("aria-hidden", "true");
+    const text = document.createElement("span");
+    text.className = "welcome-recent-text";
+    const name = document.createElement("span");
+    name.className = "welcome-recent-name";
+    name.textContent = file.name || basename(file.path);
+    const folder = document.createElement("span");
+    folder.className = "welcome-recent-folder";
+    folder.textContent = file.folder || "";
+    text.append(name, folder);
+    btn.append(icon, text);
+    btn.addEventListener("click", () => {
+      if (file.path) void openPdfByPath(file.path);
+    });
+    item.append(btn);
+    list.append(item);
+  }
+
+  section.append(head, list);
+  card.append(section);
+}
+
+async function showWelcomeScreen() {
   if (!pagesEl) return;
   pagesEl.replaceChildren();
+  let recentFiles = [];
+  try {
+    const payload = await api("/api/recent-files");
+    recentFiles = payload.files || [];
+  } catch (_) { /* welcome still works offline */ }
+
   const el = document.createElement("div");
   el.className = "welcome-screen";
-  el.innerHTML = `
-    <div class="welcome-card">
-      <div class="welcome-mark" aria-hidden="true"></div>
-      <h2 class="welcome-title">Open a PDF to review</h2>
-      <p class="welcome-lead">Highlight text, write comments, export a copy with standard PDF annotations.</p>
-      <div class="welcome-dropzone">
-        <p class="welcome-drop-label">Drop PDF here</p>
-        <p class="welcome-drop-sub">Annotations save into the PDF</p>
-        <span class="welcome-or">or</span>
-        <button type="button" class="btn primary welcome-open" data-welcome-open>Open PDF…</button>
-        <p class="welcome-shortcut"><kbd>⌘O</kbd></p>
-      </div>
+  const card = document.createElement("div");
+  card.className = `welcome-card${recentFiles.length ? " has-recent" : ""}`;
+  card.innerHTML = `
+    <div class="welcome-mark" aria-hidden="true"></div>
+    <h2 class="welcome-title">Open a PDF to review</h2>
+    <p class="welcome-lead">Highlight text, write comments, export a copy with standard PDF annotations.</p>
+    <div class="welcome-dropzone">
+      <p class="welcome-drop-label">Drop PDF here</p>
+      <p class="welcome-drop-sub">Annotations save into the PDF</p>
+      <span class="welcome-or">or</span>
+      <button type="button" class="btn primary welcome-open" data-welcome-open>Open PDF…</button>
+      <p class="welcome-shortcut"><kbd>⌘O</kbd></p>
     </div>
   `;
-  el.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
+  card.querySelector("[data-welcome-open]")?.addEventListener("click", () => {
     void pickAndOpenPdf();
   });
+  mountWelcomeRecentList(card, recentFiles);
+  el.append(card);
   pagesEl.appendChild(el);
 }
 
@@ -273,7 +343,7 @@ async function applyOpenDocument(doc) {
   closeCommentEditor();
   clearCommentSelection();
   await syncDocFlags(doc);
-  $("#doc-name").textContent = doc.open ? doc.name : "PeerFold";
+  syncDocTitle(doc);
   if (doc.open && doc.source && window.pywebview?.api?.document_opened) {
     void window.pywebview.api.document_opened(doc.source);
   }
@@ -282,7 +352,7 @@ async function applyOpenDocument(doc) {
   buildPalette(doc.palette);
   updateDocMeta();
   if (!doc.open) {
-    showWelcomeScreen();
+    await showWelcomeScreen();
     renderCommentsPane();
     return;
   }
@@ -522,7 +592,17 @@ function clearPreviewLayers() {
   }
   state.selecting = false;
   state.activeSelection = null;
+  state.textSelection = null;
   clearNativeSelection();
+}
+
+function clearTextSelection() {
+  state.textSelection = null;
+  if (!state.draft || state.draft.committed) {
+    for (const meta of state.pages.values()) {
+      meta.draftLayer?.replaceChildren();
+    }
+  }
 }
 
 function clearDraft() {
@@ -630,26 +710,43 @@ document.addEventListener("mousedown", (e) => {
   }
 });
 
+function syncDocTitle(doc = state.doc) {
+  if (!docTitleEl || !docSepEl) return;
+  if (!doc?.open) {
+    docTitleEl.hidden = true;
+    docSepEl.hidden = true;
+    docTitleEl.textContent = "";
+    docTitleEl.title = "";
+    return;
+  }
+  const name = basename(doc.source || doc.name);
+  docTitleEl.textContent = name;
+  docTitleEl.title = doc.source || doc.save_path || name;
+  docTitleEl.hidden = false;
+  docSepEl.hidden = false;
+}
+
 function updateDocMeta() {
   if (!state.doc) return;
-  const metaEl = $("#doc-meta");
+  syncDocTitle();
+  if (!docMetaEl) return;
   if (!state.doc.open) {
-    metaEl.textContent = "No PDF open";
-    metaEl.title = "";
+    docMetaEl.textContent = "";
+    docMetaEl.title = "";
     return;
   }
   const unsaved = hasUnsavedChanges() ? " · unsaved" : "";
-  if (editingInPlace()) {
-    metaEl.textContent = `${state.doc.pages} p · ${basename(state.doc.source || state.doc.name)}${unsaved}`;
-  } else {
+  let meta = `${state.doc.pages} p`;
+  if (!editingInPlace()) {
     const saveName = basename(state.doc.save_path);
     const srcName = basename(state.doc.source || state.doc.name);
-    const sameFolder = dirname(state.doc.save_path) === dirname(state.doc.source || state.doc.save_path);
-    metaEl.textContent = sameFolder
-      ? `${state.doc.pages} p · ${saveName} beside ${srcName}${unsaved}`
-      : `${state.doc.pages} p · ${saveName} · ${dirname(state.doc.save_path)}${unsaved}`;
+    if (saveName !== srcName) meta += ` · ${saveName}`;
+    else if (dirname(state.doc.save_path) !== dirname(state.doc.source || state.doc.save_path)) {
+      meta += ` · ${dirname(state.doc.save_path)}`;
+    }
   }
-  metaEl.title = state.doc.save_path;
+  docMetaEl.textContent = `${meta}${unsaved}`;
+  docMetaEl.title = state.doc.save_path || "";
 }
 
 function hasUnsavedChanges() {
@@ -787,19 +884,18 @@ function updatePaletteSelection(name) {
 }
 
 function setCommentChromeColor(hex) {
-  if (commentEditorEl) commentEditorEl.style.setProperty("--comment-color", hex);
   const ids = new Set(state.selectedCommentIds);
   const focusId = state.focusId ?? state.pendingNote?.id;
   if (focusId != null) ids.add(focusId);
-  for (const id of ids) {
-    commentsListEl
-      .querySelector(`.comment-card[data-id="${id}"]`)
-      ?.style.setProperty("--comment-color", hex);
-  }
+  for (const id of ids) refreshAnnotationChrome(id);
   if (state.draft && !state.draft.committed) {
+    const draftHex = hex || colorHex(state.draft.color);
     commentsListEl
-      .querySelector(".comment-card.draft")
-      ?.style.setProperty("--comment-color", hex);
+      ?.querySelector(".comment-card.draft")
+      ?.style.setProperty("--comment-color", draftHex);
+    if (commentEditorEl && !commentEditorEl.hidden && state.commentEditor?.mode === "draft") {
+      commentEditorEl.style.setProperty("--comment-color", draftHex);
+    }
   }
 }
 
@@ -832,22 +928,39 @@ async function applyPaletteColor(name, { ids = null } = {}) {
     return;
   }
   if (targets.kind === "annotations" && targets.ids.length) {
-    const pages = new Set();
-    let last = null;
-    for (const id of targets.ids) {
-      last = await patchAnnotation(id, { color: name }, { quiet: true });
-      pages.add(last.page);
-    }
-    for (const page of pages) await refreshPageBitmap(page);
-    renderAllHighlights();
-    if (last) {
-      setCommentChromeColor(last.hex);
-      updatePaletteSelection(last.color);
-    } else {
-      setCommentChromeColor(hex);
+    try {
+      const updated = await patchAnnotationColors(targets.ids, name);
+      const pages = new Set(updated.map((ann) => ann.page));
+      for (const page of pages) await refreshPageBitmap(page);
+      renderAllHighlights();
+      for (const ann of updated) refreshAnnotationChrome(ann.id);
+      const last = updated.at(-1);
+      updatePaletteSelection(last?.color ?? name);
+      if (isCommentEditorOpen() && state.focusId != null) syncCommentEditor();
+    } catch (err) {
+      toast(err.message || "Could not change colour", 4000);
     }
     return;
   }
+}
+
+async function patchAnnotationColors(ids, colorName) {
+  const unique = [...new Set(ids.map((id) => Number(id)))].filter((id) => state.annotations.has(id));
+  if (!unique.length) return [];
+  if (unique.length === 1) {
+    return [await patchAnnotation(unique[0], { color: colorName }, { quiet: true })];
+  }
+  const result = await withSave(() => api("/api/annotations/batch-color", {
+    method: "POST",
+    body: JSON.stringify({ ids: unique, color: colorName }),
+  }));
+  applyServerRevision(result.revision);
+  broadcastSync();
+  const items = result.items || [];
+  for (const updated of items) applyAnnotationUpdate(updated);
+  emergencyBackup();
+  updateDocMeta();
+  return items;
 }
 
 function mountPaletteSwatches(container, palette, { showAdd = false } = {}) {
@@ -927,6 +1040,81 @@ function spanRangeOrdered(spans, idA, idB) {
   return spans.slice(lo, hi + 1).map((s) => s.id);
 }
 
+function bboxIntersectsRect(bbox, rect) {
+  const [x0, y0, x1, y1] = bbox;
+  const [rx0, ry0, rx1, ry1] = rect;
+  return !(x1 < rx0 || x0 > rx1 || y1 < ry0 || y0 > ry1);
+}
+
+function spanIdsInSelectionRect(spans, anchorId, focusId) {
+  const a = spans[anchorId];
+  const f = spans[focusId];
+  if (!a) return [];
+  if (!f) return [anchorId];
+  const rect = [
+    Math.min(a.bbox[0], f.bbox[0]),
+    Math.min(a.bbox[1], f.bbox[1]),
+    Math.max(a.bbox[2], f.bbox[2]),
+    Math.max(a.bbox[3], f.bbox[3]),
+  ];
+  const ids = [];
+  for (const sp of spans) {
+    if (bboxIntersectsRect(sp.bbox, rect)) ids.push(sp.id);
+  }
+  ids.sort((ida, idb) => {
+    const sa = spans[ida];
+    const sb = spans[idb];
+    return sa.bbox[1] - sb.bbox[1] || sa.bbox[0] - sb.bbox[0];
+  });
+  return ids;
+}
+
+function textFromSpanIds(meta, spanIds) {
+  const ordered = spanIds
+    .map((id) => meta.spans[id])
+    .filter(Boolean)
+    .sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  let out = "";
+  let lastLineY = null;
+  for (const sp of ordered) {
+    const y = sp.bbox[1];
+    if (lastLineY != null && Math.abs(y - lastLineY) > LINE_Y_TOL) out += "\n";
+    else if (out) out += " ";
+    out += sp.text;
+    lastLineY = y;
+  }
+  return out;
+}
+
+function currentTextSelection() {
+  if (state.draft && !state.draft.committed) {
+    return { pageIndex: state.draft.pageIndex, spanIds: state.draft.spanIds };
+  }
+  if (state.textSelection?.spanIds?.length) return state.textSelection;
+  if (state.selecting && state.activeSelection?.meta?._dragSpanIds?.length) {
+    return {
+      pageIndex: state.activeSelection.pageIndex,
+      spanIds: state.activeSelection.meta._dragSpanIds,
+    };
+  }
+  return null;
+}
+
+async function copySelectedText() {
+  const sel = currentTextSelection();
+  if (!sel?.spanIds?.length) return;
+  const meta = pageMeta(sel.pageIndex);
+  if (!meta) return;
+  const text = textFromSpanIds(meta, sel.spanIds);
+  if (!text) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    toast("Copied", 1500);
+  } catch (_) {
+    toast("Could not copy", 2000);
+  }
+}
+
 function clientToPdf(meta, pageIndex, clientX, clientY) {
   const rect = meta.pageEl.getBoundingClientRect();
   if (rect.width <= 0 || rect.height <= 0) return { x: 0, y: 0 };
@@ -969,6 +1157,48 @@ function spanIdAtClient(meta, pageIndex, clientX, clientY, { strict = false } = 
   return nearestId;
 }
 
+function spanIdForDragSelection(meta, pageIndex, clientX, clientY, anchorId) {
+  const hit = spanIdAtClient(meta, pageIndex, clientX, clientY, { strict: false });
+  if (hit != null) return hit;
+  if (!meta.spans?.length) return null;
+
+  const { x, y } = clientToPdf(meta, pageIndex, clientX, clientY);
+  const band = [];
+  for (const sp of meta.spans) {
+    const [, y0, , y1] = sp.bbox;
+    if (y >= y0 - LINE_Y_TOL * 2 && y <= y1 + LINE_Y_TOL * 2) band.push(sp);
+  }
+  if (band.length) {
+    let best = band[0];
+    let bestScore = Infinity;
+    for (const sp of band) {
+      const [x0, , x1] = sp.bbox;
+      let score = 0;
+      if (x < x0) score = x0 - x;
+      else if (x > x1) score = x - x1;
+      if (score < bestScore) {
+        bestScore = score;
+        best = sp;
+      }
+    }
+    return best.id;
+  }
+
+  const anchorIdx = meta.spans.findIndex((sp) => sp.id === anchorId);
+  if (anchorIdx < 0) return meta.spans[meta.spans.length - 1].id;
+  const anchorMidY = (meta.spans[anchorIdx].bbox[1] + meta.spans[anchorIdx].bbox[3]) / 2;
+  return y >= anchorMidY ? meta.spans[meta.spans.length - 1].id : meta.spans[0].id;
+}
+
+function autoScrollViewerDuringSelection(clientY) {
+  if (!viewerEl) return;
+  const rect = viewerEl.getBoundingClientRect();
+  const edge = 56;
+  const step = 20;
+  if (clientY < rect.top + edge) viewerEl.scrollTop -= step;
+  else if (clientY > rect.bottom - edge) viewerEl.scrollTop += step;
+}
+
 function selectionOverlapsOthers(pageIndex, spanIds, exceptId = null) {
   const meta = pageMeta(pageIndex);
   if (!meta || !spanIds.length) return false;
@@ -999,8 +1229,7 @@ function spanIdsEqual(a, b) {
 }
 
 function updateSelectionOverlay(sel, focusId) {
-  const ids = spanRangeOrdered(sel.meta.spans, sel.anchorId, focusId);
-  if (selectionOverlapsOthers(sel.pageIndex, ids)) return;
+  const ids = spanIdsInSelectionRect(sel.meta.spans, sel.anchorId, focusId);
   sel.meta._dragSpanIds = ids;
   sel.focusId = focusId;
   renderDraftOverlay(sel.meta, mergeLineRects(sel.meta.spans, ids));
@@ -1139,8 +1368,12 @@ function closeCommentEditor() {
   state.commentEditor = null;
 }
 
+function isCommentEditorOpen() {
+  return Boolean(commentEditorEl && !commentEditorEl.hidden);
+}
+
 function isCommentEditorActive() {
-  return Boolean(commentEditorTa && commentEditorEl && !commentEditorEl.hidden
+  return Boolean(commentEditorTa && isCommentEditorOpen()
     && document.activeElement === commentEditorTa);
 }
 
@@ -1155,7 +1388,7 @@ function editorValueFor(ann) {
   return ann.content ?? "";
 }
 
-function openCommentEditor({ mode, anchorCard, color, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
+function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
   if (!commentEditorEl || !commentEditorTa) return;
   if (mode === "draft") syncDraftTextFromEditor();
   const editorKey = mode === "draft" ? "draft" : String(state.focusId ?? title);
@@ -1172,7 +1405,10 @@ function openCommentEditor({ mode, anchorCard, color, title, meta, quote, value,
   }
   anchorCard?.classList.add("editor-open");
 
-  commentEditorEl.style.setProperty("--comment-color", color);
+  const chromeColor = mode === "draft"
+    ? colorHex(state.draft?.color)
+    : annotationHex(state.annotations.get(state.focusId));
+  commentEditorEl.style.setProperty("--comment-color", chromeColor);
   commentEditorTitleEl.textContent = title;
   commentEditorMetaEl.textContent = meta;
   commentEditorQuoteEl.textContent = quote;
@@ -1224,7 +1460,6 @@ function syncCommentEditor() {
     const ta = openCommentEditor({
       mode: "draft",
       anchorCard: card,
-      color: colorHex(state.draft.color),
       title: "New comment",
       meta: `p.${state.draft.pageIndex + 1}`,
       quote: excerptFor({ page: state.draft.pageIndex, rects: state.draft.rects }),
@@ -1252,7 +1487,6 @@ function syncCommentEditor() {
     const ta = openCommentEditor({
       mode: "ann",
       anchorCard: card,
-      color: ann.hex,
       title: ann.title || state.doc?.reviewer || "Review",
       meta: `p.${ann.page + 1}`,
       quote: excerptFor(ann),
@@ -2085,7 +2319,7 @@ function buildCommentCard(ann) {
   if (editing && trimText(ann.content) === "") card.classList.add("deletable");
   card.dataset.id = String(ann.id);
   card.setAttribute("aria-selected", picked || editing ? "true" : "false");
-  card.style.setProperty("--comment-color", ann.hex);
+  card.style.setProperty("--comment-color", annotationHex(ann));
 
   const inner = document.createElement("div");
   inner.className = "comment-card-inner";
@@ -2106,12 +2340,14 @@ function buildCommentCard(ann) {
   metaMain.className = "comment-meta-main";
   const titleBtn = document.createElement("button");
   titleBtn.type = "button";
-  titleBtn.className = "comment-locate";
+  titleBtn.className = "comment-title";
   titleBtn.textContent = ann.title || state.doc?.reviewer || "Review";
-  titleBtn.title = "Center highlight in document";
+  titleBtn.title = "Edit comment";
   titleBtn.addEventListener("click", (ev) => {
     ev.stopPropagation();
-    locateAnnotation(ann.id);
+    settleDraftSync();
+    clearCommentSelection();
+    focusAnnotation(ann.id, { edit: true, scrollCard: false, behavior: "auto" });
   });
   const pageBtn = document.createElement("button");
   pageBtn.type = "button";
@@ -2245,6 +2481,23 @@ function colorHex(name) {
   return mergedPalette(state.doc?.palette)[name] || "#ffea3a";
 }
 
+function annotationHex(ann) {
+  if (!ann) return colorHex(state.color);
+  if (ann.hex) return ann.hex;
+  return colorHex(ann.color);
+}
+
+function refreshAnnotationChrome(id) {
+  const ann = state.annotations.get(id);
+  if (!ann) return;
+  const hex = annotationHex(ann);
+  commentsListEl
+    ?.querySelector(`.comment-card[data-id="${id}"]`)
+    ?.style.setProperty("--comment-color", hex);
+  const editing = state.focusId === id && commentEditorEl && !commentEditorEl.hidden;
+  if (editing) commentEditorEl.style.setProperty("--comment-color", hex);
+}
+
 function paintRects(layer, rects, scale, hex, className) {
   layer.replaceChildren();
   const isDraft = className.includes("draft");
@@ -2335,10 +2588,6 @@ async function requestDelete(id, currentText) {
 function showDraft(pageIndex, spanIds) {
   const meta = pageMeta(pageIndex);
   if (!meta) return;
-  if (selectionOverlapsOthers(pageIndex, spanIds)) {
-    meta.draftLayer?.replaceChildren();
-    return;
-  }
   const rects = mergeLineRects(meta.spans, spanIds);
   if (!rects.length) return;
 
@@ -2346,6 +2595,16 @@ function showDraft(pageIndex, spanIds) {
     if (Number(idx) !== pageIndex) m.draftLayer?.replaceChildren();
   }
 
+  if (selectionOverlapsOthers(pageIndex, spanIds)) {
+    state.draft = null;
+    state.textSelection = { pageIndex, spanIds };
+    renderDraftOverlay(meta, rects);
+    clearNativeSelection();
+    toast("Overlaps an existing highlight — ⌘C to copy", 3500);
+    return;
+  }
+
+  state.textSelection = null;
   state.draft = {
     pageIndex,
     spanIds,
@@ -2668,11 +2927,10 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
   const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
   const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
   if (colorOnly) {
-    setCommentChromeColor(updated.hex);
+    refreshAnnotationChrome(updated.id);
     updatePaletteSelection(updated.color);
-    await refreshPageBitmap(updated.page);
   } else if (keepEditor) {
-    setCommentChromeColor(updated.hex);
+    refreshAnnotationChrome(updated.id);
     updatePaletteSelection(updated.color);
     await refreshPageBitmap(updated.page);
   } else if (!quiet || !editingThis) {
@@ -2776,14 +3034,8 @@ function contextMenuItems(ann) {
   return items;
 }
 
-function openCtx(ev, ann) {
-  ev.preventDefault();
-  ev.stopPropagation();
+function mountContextMenu(ev, items) {
   hideCtx();
-  selectAnnotationForMenu(ann.id);
-
-  const items = contextMenuItems(ann);
-
   for (const item of items) {
     if (item.sep) {
       ctxMenu.appendChild(document.createElement("hr"));
@@ -2797,6 +3049,22 @@ function openCtx(ev, ann) {
     ctxMenu.appendChild(btn);
   }
   positionContextMenu(ev.clientX, ev.clientY);
+}
+
+function openCtx(ev, ann) {
+  ev.preventDefault();
+  ev.stopPropagation();
+  selectAnnotationForMenu(ann.id);
+  mountContextMenu(ev, contextMenuItems(ann));
+}
+
+function openTextSelectionCtx(ev) {
+  if (!currentTextSelection()) return;
+  ev.preventDefault();
+  ev.stopPropagation();
+  mountContextMenu(ev, [
+    { label: "Copy", action: () => void copySelectedText() },
+  ]);
 }
 
 async function copyHighlightText(ann) {
@@ -2892,14 +3160,28 @@ function wireSelection(pageIndex, meta) {
     ev.preventDefault();
     clearNativeSelection();
     settleDraftSync();
+    clearTextSelection();
     void blurComment();
     state.focusId = null;
     hideCtx();
     state.selecting = true;
-    state.activeSelection = { pageIndex, meta, anchorId, focusId: anchorId };
+    state.activeSelection = {
+      pageIndex,
+      meta,
+      anchorId,
+      focusId: anchorId,
+      startX: ev.clientX,
+      startY: ev.clientY,
+    };
     setSelectingUi(true, meta.pageEl);
     updateSelectionOverlay(state.activeSelection, anchorId);
   }, { capture: true });
+
+  meta.pageEl.addEventListener("contextmenu", (ev) => {
+    if (ev.target.closest(".highlight-group")) return;
+    if (ev.target.closest(".pdf-link")) return;
+    openTextSelectionCtx(ev);
+  });
 }
 
 function bindGlobalSelectionHandlers() {
@@ -2929,13 +3211,20 @@ function bindGlobalSelectionHandlers() {
 
     const sel = state.activeSelection;
     if (!state.selecting || !sel) return;
-    const focusId = spanIdAtClient(sel.meta, sel.pageIndex, ev.clientX, ev.clientY);
+    autoScrollViewerDuringSelection(ev.clientY);
+    const focusId = spanIdForDragSelection(
+      sel.meta,
+      sel.pageIndex,
+      ev.clientX,
+      ev.clientY,
+      sel.anchorId,
+    );
     if (focusId == null) return;
     if (focusId === sel.focusId && sel.meta._dragSpanIds?.length) return;
     updateSelectionOverlay(sel, focusId);
   });
 
-  window.addEventListener("mouseup", () => {
+  window.addEventListener("mouseup", (ev) => {
     if (state.highlightGesture) {
       finishHighlightGesture();
       clearNativeSelection();
@@ -2946,12 +3235,22 @@ function bindGlobalSelectionHandlers() {
     if (!state.selecting || !sel) return;
     state.selecting = false;
     setSelectingUi(false);
-    const spanIds = sel.meta._dragSpanIds || spanRangeOrdered(sel.meta.spans, sel.anchorId, sel.anchorId);
+    const spanIds = sel.meta._dragSpanIds
+      || spanIdsInSelectionRect(sel.meta.spans, sel.anchorId, sel.focusId);
     sel.meta._dragSpanIds = null;
     state.activeSelection = null;
     clearNativeSelection();
-    if (spanIds.length) showDraft(sel.pageIndex, spanIds);
-    else sel.meta.draftLayer?.replaceChildren();
+    const moved = sel.startX != null && sel.startY != null
+      && Math.hypot(ev.clientX - sel.startX, ev.clientY - sel.startY) >= DRAG_THRESHOLD;
+    if (!spanIds.length) {
+      sel.meta.draftLayer?.replaceChildren();
+      return;
+    }
+    if (moved && spanIds.length === 1 && spanIds[0] === sel.anchorId) {
+      sel.meta.draftLayer?.replaceChildren();
+      return;
+    }
+    showDraft(sel.pageIndex, spanIds);
   });
 }
 
@@ -3003,9 +3302,13 @@ function mergeAnnotationsFromServer(list) {
   }
 
   renderAllHighlights();
-  if (!isCommentEditorActive()) {
+  if (!isCommentEditorOpen()) {
     renderCommentsPane();
   } else {
+    if (state.focusId != null) {
+      refreshAnnotationChrome(state.focusId);
+      updatePaletteSelection(activeColorName());
+    }
     updateCommentSelectionUi();
   }
   emergencyBackup();
@@ -3249,7 +3552,7 @@ async function init() {
   wireOpenPdf();
   state.doc = await waitForApp();
   setServerRevision(state.doc.revision ?? 0);
-  $("#doc-name").textContent = state.doc.open ? state.doc.name : "PeerFold";
+  syncDocTitle(state.doc);
   renderUpdateUi({ current: state.doc.app_version, check_ok: false });
   updateBtnEl?.addEventListener("click", () => { void startUpdate(); });
   reviewerEl.value = state.doc.reviewer;
@@ -3288,10 +3591,24 @@ async function init() {
       void pickAndOpenPdf();
       return;
     }
+    if ((ev.metaKey || ev.ctrlKey) && ev.key.toLowerCase() === "c") {
+      if (ev.target.closest("textarea, input, select")) return;
+      if (!commentEditorEl?.hidden && document.activeElement === commentEditorTa) return;
+      if (currentTextSelection()) {
+        ev.preventDefault();
+        void copySelectedText();
+      }
+      return;
+    }
     if (ev.key === "Escape") {
       if (state.selectedCommentIds.size > 0) {
         ev.preventDefault();
         clearCommentSelection();
+        return;
+      }
+      if (state.textSelection && !state.draft) {
+        ev.preventDefault();
+        clearTextSelection();
         return;
       }
       if (state.draft && !state.draft.committed) {

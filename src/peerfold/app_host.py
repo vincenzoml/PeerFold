@@ -4,10 +4,17 @@ from __future__ import annotations
 
 import sys
 import threading
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 
-from peerfold.core import ReviewHandler, ServerSession, pick_port, print_review_target
+from peerfold.core import (
+    QuietThreadingHTTPServer,
+    ReviewHandler,
+    ServerSession,
+    farewell_message,
+    pick_port,
+    print_review_target,
+    terminal_verbose,
+)
 from peerfold.ui import (
     ApplicationMenuApi,
     WebviewUnavailableError,
@@ -38,7 +45,7 @@ class DocumentWindow:
         handler = type("BoundReviewHandler", (ReviewHandler,), {})
         handler.session = self.session
         handler.fitz_mod = None
-        self._server = ThreadingHTTPServer(("127.0.0.1", self.port), handler)
+        self._server = QuietThreadingHTTPServer(("127.0.0.1", self.port), handler)
         self._thread = threading.Thread(
             target=self._server.serve_forever,
             name=f"peerfold-http-{self.port}",
@@ -147,12 +154,13 @@ class AppHost:
         with self._docs_lock:
             self._documents.append(doc)
 
-        if pdf:
-            print(f"PeerFold · {pdf.name}")
-        else:
-            print("PeerFold")
-        print(f"Open: {doc.url}")
-        print_review_target(doc.session)
+        if terminal_verbose():
+            if pdf:
+                print(f"PeerFold · {pdf.name}")
+            else:
+                print("PeerFold")
+            print(f"Open: {doc.url}")
+            print_review_target(doc.session)
 
         if self._started:
             threading.Thread(
@@ -240,6 +248,7 @@ class AppHost:
             for doc in docs:
                 doc.shutdown()
             AppHost._instance = None
+            farewell_message()
 
 
 def run_webview_app(pdf: Path | None, *, reviewer: str) -> None:

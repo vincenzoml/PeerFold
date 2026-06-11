@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.35"
+PEERFOLD_VERSION = "0.1.36"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
@@ -87,16 +87,31 @@ def uv_env() -> dict[str, str]:
     return env
 
 
+def _run(
+    cmd: list[str],
+    *,
+    env: dict[str, str] | None = None,
+    quiet: bool = False,
+    progress: str | None = None,
+) -> None:
+    if progress:
+        print(progress, flush=True)
+    kwargs: dict = {"check": True, "env": env or os.environ.copy()}
+    if quiet:
+        kwargs.update({"capture_output": True, "text": True})
+    subprocess.run(cmd, **kwargs)
+
+
 def ensure_uv() -> Path:
     py, uv = tools_paths()
     if uv.is_file():
         return uv
     tools = py.parent.parent
     tools.parent.mkdir(parents=True, exist_ok=True)
-    subprocess.run([sys.executable, "-m", "venv", str(tools)], check=True)
-    subprocess.run(
-        [str(py), "-m", "pip", "install", "-U", "pip", "uv"],
-        check=True,
+    _run([sys.executable, "-m", "venv", str(tools)], progress="Setting up PeerFold…")
+    _run(
+        [str(py), "-m", "pip", "install", "-q", "pip", "uv"],
+        progress="Installing PeerFold tools…",
     )
     if not uv.is_file():
         raise SystemExit("Could not bootstrap uv for PeerFold")
@@ -134,7 +149,11 @@ def ensure_venv_python() -> Path:
     venv = venv_dir()
     venv.parent.mkdir(parents=True, exist_ok=True)
     uv = ensure_uv()
-    subprocess.run([str(uv), "venv", str(venv)], check=True, env=uv_env())
+    _run(
+        [str(uv), "venv", str(venv)],
+        env=uv_env(),
+        progress="Preparing PeerFold environment…",
+    )
     py, _ = venv_paths()
     if not py.is_file():
         raise SystemExit(f"Could not create PeerFold venv at {venv}")
@@ -212,32 +231,43 @@ def latest_pypi_version() -> str:
     return latest
 
 
-def uv_pip_install(py: Path, *args: str) -> None:
+def uv_pip_install(py: Path, *spec: str, progress: str | None = None) -> None:
     uv = ensure_uv()
-    subprocess.run(
-        [str(uv), "pip", "install", *args, "--python", str(py)],
-        check=True,
+    _run(
+        [str(uv), "pip", "install", "-q", *spec, "--python", str(py)],
         env=uv_env(),
+        quiet=True,
+        progress=progress,
     )
 
 
 def install_package(py: Path) -> None:
     dev = local_peerfold_repo()
     if dev is not None:
-        uv_pip_install(py, "-e", str(dev))
+        if installed_version(py) != local_repo_version(dev):
+            uv_pip_install(py, "-e", str(dev), progress=f"Installing PeerFold from {dev.name}…")
         return
     if installed_version(py) == PEERFOLD_VERSION:
         return
-    uv_pip_install(py, f"{PACKAGE}=={PEERFOLD_VERSION}")
+    uv_pip_install(
+        py,
+        f"{PACKAGE}=={PEERFOLD_VERSION}",
+        progress=f"Installing PeerFold {PEERFOLD_VERSION}…",
+    )
 
 
 def upgrade_to_latest(py: Path) -> str:
     dev = local_peerfold_repo()
     if dev is not None:
-        uv_pip_install(py, "-e", str(dev))
+        uv_pip_install(py, "-e", str(dev), progress=f"Refreshing editable PeerFold from {dev.name}…")
         return local_repo_version(dev)
     latest = latest_pypi_version()
-    uv_pip_install(py, "--upgrade", f"{PACKAGE}=={latest}")
+    uv_pip_install(
+        py,
+        "--upgrade",
+        f"{PACKAGE}=={latest}",
+        progress=f"Updating PeerFold to {latest}…",
+    )
     installed = installed_version(py)
     if installed != latest:
         raise SystemExit(
@@ -295,8 +325,8 @@ def main() -> None:
     if not peerfold.is_file():
         raise SystemExit(f"peerfold not found after installing {PACKAGE}")
 
-    if dev is not None and os.environ.get("PEERFOLD_QUIET") != "1":
-        print(f"PeerFold {installed_version(py) or '?'} (editable ← {dev})", file=sys.stderr)
+    if dev is not None and os.environ.get("PEERFOLD_VERBOSE") == "1":
+        print(f"PeerFold {installed_version(py) or '?'} (editable ← {dev})", flush=True)
 
     result = subprocess.run([str(peerfold), *args])
     raise SystemExit(result.returncode)

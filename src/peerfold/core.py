@@ -12,6 +12,14 @@ import threading
 import time
 from datetime import date
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+
+class QuietThreadingHTTPServer(ThreadingHTTPServer):
+    def handle_error(self, request, client_address) -> None:
+        exc_type, _, _ = sys.exc_info()
+        if exc_type in (BrokenPipeError, ConnectionResetError):
+            return
+        super().handle_error(request, client_address)
 from importlib import resources
 from pathlib import Path
 from typing import Any
@@ -1320,6 +1328,10 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return self._file(target)
         if path == "/api/update-check":
             return self._json(200, update_check_payload())
+        if path == "/api/recent-files":
+            from peerfold.recent_files import list_payload
+
+            return self._json(200, {"files": list_payload()})
         if path == "/api/document":
             if self._guard_api():
                 return
@@ -1364,6 +1376,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return self._json(400, {"error": str(exc)})
             except RuntimeError as exc:
                 return self._json(500, {"error": str(exc)})
+        if path == "/api/recent-files/clear":
+            from peerfold.recent_files import clear as clear_recent_files
+
+            clear_recent_files()
+            return self._json(200, {"ok": True})
         if path.startswith("/api/") and self._guard_document():
             return
         try:
@@ -1543,7 +1560,22 @@ def update_check_payload() -> dict[str, Any]:
     }
 
 
+def terminal_verbose() -> bool:
+    return os.environ.get("PEERFOLD_VERBOSE", "").strip().lower() not in (
+        "",
+        "0",
+        "false",
+        "no",
+    )
+
+
+def farewell_message() -> None:
+    print("Goodbye — thanks for using PeerFold.", flush=True)
+
+
 def print_review_target(session: ServerSession) -> None:
+    if not terminal_verbose():
+        return
     session._ready.wait()
     if session.loading_error or not session.has_document:
         return
@@ -1610,14 +1642,15 @@ def run_server(
     handler = type("BoundReviewHandler", (ReviewHandler,), {})
     handler.session = session
     handler.fitz_mod = None
-    server = ThreadingHTTPServer(("127.0.0.1", chosen), handler)
+    server = QuietThreadingHTTPServer(("127.0.0.1", chosen), handler)
 
-    if pdf:
-        print(f"PeerFold · {pdf.name}")
-    else:
-        print("PeerFold")
-    print(f"Open: {url}")
-    print_review_target(session)
+    if ui == "web" or terminal_verbose():
+        if pdf:
+            print(f"PeerFold · {pdf.name}")
+        else:
+            print("PeerFold")
+        print(f"Open: {url}")
+        print_review_target(session)
 
     if ui == "none":
         session._ready.wait()
@@ -1626,10 +1659,11 @@ def run_server(
         try:
             server.serve_forever()
         except KeyboardInterrupt:
-            print("\nStopping…")
+            pass
         finally:
             server.server_close()
             session.close()
+            farewell_message()
         return
 
     thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -1639,8 +1673,9 @@ def run_server(
     try:
         thread.join()
     except KeyboardInterrupt:
-        print("\nStopping…")
+        pass
     finally:
         server.shutdown()
         server.server_close()
         session.close()
+        farewell_message()

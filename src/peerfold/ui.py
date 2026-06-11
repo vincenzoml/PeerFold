@@ -395,12 +395,25 @@ def _refresh_application_menu_on_main(api: ApplicationMenuApi) -> None:
     )
 
 
+def _set_macos_dock_name(name: str = "PeerFold") -> None:
+    """Show PeerFold in the Dock tooltip instead of Python (dev and PyInstaller builds)."""
+    if sys.platform != "darwin":
+        return
+    try:
+        import AppKit
+
+        AppKit.NSProcessInfo.processInfo().setProcessName_(name)
+    except Exception:
+        pass
+
+
 def _set_application_icon() -> None:
     if sys.platform != "darwin":
         return
     try:
         import AppKit
 
+        _set_macos_dock_name()
         image = AppKit.NSImage.alloc().initWithContentsOfFile_(str(icon_png(512)))
         if image is not None:
             AppKit.NSApplication.sharedApplication().setApplicationIconImage_(image)

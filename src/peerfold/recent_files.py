@@ -40,18 +40,32 @@ def _write_store(paths: list[Path]) -> None:
     )
 
 
-def menu_label(path: Path) -> str:
+def folder_short(path: Path) -> str:
     path = path.expanduser().resolve()
     parent = path.parent
     try:
         short_parent = str(parent.relative_to(Path.home()))
         if not short_parent.startswith(".."):
-            short_parent = f"~/{short_parent}" if short_parent != "." else "~"
-        else:
-            short_parent = str(parent)
+            return f"~/{short_parent}" if short_parent != "." else "~"
     except ValueError:
-        short_parent = str(parent)
-    return f"{path.name}  —  {short_parent}"
+        pass
+    return str(parent)
+
+
+def menu_label(path: Path) -> str:
+    path = path.expanduser().resolve()
+    return f"{path.name}  —  {folder_short(path)}"
+
+
+def list_payload() -> list[dict[str, str]]:
+    return [
+        {
+            "path": str(path),
+            "name": path.name,
+            "folder": folder_short(path),
+        }
+        for path in list_paths()
+    ]
 
 
 def list_paths() -> list[Path]:

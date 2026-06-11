@@ -34,11 +34,13 @@ static void LaunchPeerFold(NSString *pdfPath) {
     }
     const char *run = runtime.fileSystemRepresentation;
     if (pdfPath.length > 0) {
-        execl(run, run, pdfPath.fileSystemRepresentation, (char *)NULL);
+        char *argv[] = { "PeerFold", (char *)pdfPath.fileSystemRepresentation, NULL };
+        execv(run, argv);
     } else {
-        execl(run, run, (char *)NULL);
+        char *argv[] = { "PeerFold", NULL };
+        execv(run, argv);
     }
-    perror("execl");
+    perror("execv");
     exit(1);
 }
 

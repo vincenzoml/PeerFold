@@ -13,7 +13,7 @@
   --radius-sm: 8px;
   --font: ui-sans-serif, system-ui, -apple-system, "SF Pro Text", "Segoe UI", sans-serif;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --topbar-h: 52px;
+  --topbar-h: 40px;
   --toolbar-h: 44px;
   --comments-w: 340px;
   --comments-pane-w: 340px;
@@ -66,11 +66,14 @@ body {
   z-index: 20;
 }
 
-.brand {
+.topbar-leading {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   min-width: 0;
+  flex: 1;
+  font-size: 13px;
+  line-height: 1;
 }
 
 .brand-mark {
@@ -81,39 +84,53 @@ body {
   display: block;
 }
 
-.brand-text {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
+.app-brand {
+  font-weight: 600;
+  flex-shrink: 0;
 }
 
-.brand-text strong {
-  font-size: 13px;
+.app-version-badge {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface-solid) 92%, var(--muted));
+  font-size: 10px;
   font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--muted);
+}
+
+.app-version-available {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--accent) 82%, var(--text));
+  white-space: nowrap;
+}
+
+.topbar-sep {
+  flex-shrink: 0;
+  color: var(--muted);
+  opacity: 0.55;
+}
+
+.doc-title {
+  font-weight: 500;
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.app-version {
-  font-size: 10px;
-  font-weight: 500;
-  letter-spacing: 0.03em;
-}
-
-.version-strip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+.doc-meta {
+  font-size: 11px;
   min-width: 0;
-}
-
-.app-version-available {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: color-mix(in srgb, var(--accent) 82%, var(--text));
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 1;
 }
 
 .btn-update {
@@ -361,6 +378,11 @@ body {
   box-shadow: var(--shadow);
 }
 
+.welcome-card.has-recent {
+  width: min(100%, 440px);
+  padding-bottom: 1.35rem;
+}
+
 .welcome-mark {
   width: 14px;
   height: 14px;
@@ -443,6 +465,132 @@ body {
   font-size: 11px;
   color: var(--muted);
   line-height: 1.4;
+}
+
+.welcome-recent {
+  margin-top: 1.35rem;
+  padding-top: 1.15rem;
+  border-top: 1px solid color-mix(in srgb, var(--border) 85%, transparent);
+  text-align: left;
+}
+
+.welcome-recent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.welcome-recent-heading {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.welcome-recent-clear {
+  border: none;
+  background: transparent;
+  padding: 0.15rem 0.35rem;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.welcome-recent-clear:hover {
+  color: var(--text);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.welcome-recent-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: min(240px, 34vh);
+  overflow: auto;
+}
+
+.welcome-recent-item {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  width: 100%;
+  padding: 0.55rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: calc(var(--radius) - 2px);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.12s ease;
+}
+
+.welcome-recent-item:hover {
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  border-color: color-mix(in srgb, var(--border) 90%, var(--accent));
+}
+
+.welcome-recent-item:active {
+  transform: scale(0.995);
+}
+
+.welcome-recent-icon {
+  position: relative;
+  flex: 0 0 26px;
+  width: 26px;
+  height: 32px;
+  border-radius: 5px;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, #ff6b6b 88%, white), #d94848);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 1px 2px rgba(0, 0, 0, 0.18);
+}
+
+.welcome-recent-icon::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 8px;
+  height: 8px;
+  border-bottom-left-radius: 4px;
+  background: color-mix(in srgb, var(--surface-solid) 72%, transparent);
+}
+
+.welcome-recent-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.welcome-recent-name {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.welcome-recent-folder {
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .viewer-error strong {
@@ -810,7 +958,8 @@ body {
   color: var(--muted);
 }
 
-.comment-locate {
+.comment-locate,
+.comment-title {
   appearance: none;
   border: 0;
   padding: 0;
@@ -822,12 +971,18 @@ body {
   transition: color 120ms ease, background 120ms ease;
 }
 
-.comment-locate:hover {
+.comment-title {
+  font-weight: 600;
+}
+
+.comment-locate:hover,
+.comment-title:hover {
   color: var(--accent);
   background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 
-.comment-locate:focus-visible {
+.comment-locate:focus-visible,
+.comment-title:focus-visible {
   outline: 2px solid color-mix(in srgb, var(--accent) 40%, transparent);
   outline-offset: 1px;
 }

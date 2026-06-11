@@ -2,7 +2,7 @@
 
 **Website:** [vincenzoml.github.io/PeerFold](https://vincenzoml.github.io/PeerFold/) · **Source:** [github.com/vincenzoml/PeerFold](https://github.com/vincenzoml/PeerFold)
 
-Review PDFs in a native window. Highlights are standard PDF annotations — open the saved copy in any reader.
+Review PDFs in a native window. Click, type, done.
 
 Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.
 
@@ -36,7 +36,7 @@ One launcher file — pinned PyPI version, same build for every co-author. Do **
 **One-liner** (from project root):
 
 ```bash
-curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py
+curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py
 ./peerfold.py your-paper.pdf --reviewer AB
 ```
 
@@ -73,3 +73,5 @@ pytest
 ## License
 
 MIT — see [LICENSE](LICENSE). Uses [PyMuPDF](https://pymupdf.readthedocs.io/) (AGPL).
+
+Brought to you by [vincenzoml@gmail.com](mailto:vincenzoml@gmail.com) · [vincenzoml.github.io](https://vincenzoml.github.io/)

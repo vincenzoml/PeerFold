@@ -317,7 +317,12 @@
       font-size: 12px;
       color: var(--faint);
       text-align: center;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
     }
+    footer a { color: var(--accent); }
+    footer a:hover { color: var(--soft); }
   </style>
 </head>
 <body>
@@ -338,15 +343,14 @@
         <span class="hero-q">PDF review?</span><br>
         <span class="hero-tag">Click, type, done.</span>
       </h1>
-      <p class="sub">Highlights and comments export as standard PDF annotations.</p>
     </section>
 
     <section class="shell folder">
       <h2>Drop one file into your paper folder</h2>
       <p class="lead">Co-authors run it from the repo. No install step.</p>
       <div class="folder-cmd">
-        <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py">
-          <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py</code>
+        <button type="button" class="copy-cmd" data-copy="curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py">
+          <code>curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py</code>
           <span class="copy-label" aria-live="polite"></span>
         </button>
         <p class="folder-run">./peerfold.py draft.pdf</p>
@@ -411,7 +415,10 @@
     </div>
   </div>
 
-  <footer class="shell">Copyright © 2026 PeerFold. MIT License.</footer>
+  <footer class="shell">
+    <p>Brought to you by <a href="mailto:vincenzoml@gmail.com">vincenzoml@gmail.com</a> · <a href="https://vincenzoml.github.io/">vincenzoml.github.io</a></p>
+    <p>Copyright © 2026 PeerFold. MIT License.</p>
+  </footer>
 
   <script>
     const shots = [

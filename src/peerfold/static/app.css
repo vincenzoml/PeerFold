@@ -1546,22 +1546,39 @@ body {
   transform: translateX(-50%);
   padding: 11px 16px;
   border-radius: 10px;
-  background: var(--surface-solid);
-  color: var(--text);
-  border: 1px solid color-mix(in srgb, var(--text) 16%, var(--border));
+  background-color: #2c2c2e;
+  color: #f5f5f7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
   font-size: 13px;
   font-weight: 500;
   line-height: 1.35;
   max-width: min(92vw, 420px);
   text-align: center;
-  box-shadow: var(--shadow);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
   z-index: 100;
   animation: toast-in 180ms ease;
+  -webkit-text-fill-color: currentColor;
+}
+
+@media (prefers-color-scheme: light) {
+  .toast {
+    background-color: #ffffff;
+    color: #1d1d1f;
+    border-color: rgba(0, 0, 0, 0.1);
+    box-shadow: var(--shadow);
+  }
 }
 
 .toast.toast-update:hover {
-  background: color-mix(in srgb, var(--accent) 8%, var(--surface-solid));
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  background-color: color-mix(in srgb, var(--accent) 10%, #2c2c2e);
+  border-color: color-mix(in srgb, var(--accent) 35%, rgba(255, 255, 255, 0.14));
+}
+
+@media (prefers-color-scheme: light) {
+  .toast.toast-update:hover {
+    background-color: color-mix(in srgb, var(--accent) 8%, #ffffff);
+    border-color: color-mix(in srgb, var(--accent) 35%, rgba(0, 0, 0, 0.1));
+  }
 }
 
 @keyframes toast-in {

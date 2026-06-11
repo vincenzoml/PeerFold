@@ -12,9 +12,10 @@ from pathlib import Path
 from typing import Any
 from urllib.request import urlopen
 
-from peerfold.core import UPDATE_REPO, _github_ssl_context, app_version, version_newer
+from peerfold.core import UPDATE_REPO, _github_ssl_context, version_newer
 
 UPDATE_BASE = f"https://github.com/{UPDATE_REPO}/releases/latest/download"
+PACKAGE = "peerfold-review"
 
 
 def platform_asset_name() -> str | None:
@@ -48,7 +49,7 @@ def install_mode() -> str:
     if getattr(sys, "frozen", False):
         return "bundle"
     try:
-        importlib.metadata.version("peerfold-review")
+        importlib.metadata.version(PACKAGE)
     except importlib.metadata.PackageNotFoundError:
         return "script"
     else:
@@ -69,6 +70,101 @@ def install_support() -> dict[str, Any]:
         "asset": asset,
         "download_url": url,
         "can_install": can_install,
+    }
+
+
+def _peerfold_data_dir() -> Path:
+    override = os.environ.get("PEERFOLD_DATA", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if sys.platform == "win32":
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        if base:
+            return Path(base) / "PeerFold"
+        return Path.home() / "AppData" / "Local" / "PeerFold"
+    xdg = os.environ.get("XDG_DATA_HOME", "").strip()
+    if xdg:
+        return Path(xdg) / "peerfold"
+    return Path.home() / ".local" / "share" / "peerfold"
+
+
+def _uv_tool() -> Path | None:
+    tools = _peerfold_data_dir() / "tools"
+    uv = tools / ("Scripts/uv.exe" if sys.platform == "win32" else "bin/uv")
+    return uv if uv.is_file() else None
+
+
+def _launcher_script() -> Path | None:
+    raw = os.environ.get("PEERFOLD_LAUNCHER", "").strip()
+    if not raw:
+        return None
+    script = Path(raw).expanduser().resolve()
+    return script if script.is_file() else None
+
+
+def _latest_install_version() -> str:
+    from peerfold.core import fetch_latest_release_version
+
+    latest = fetch_latest_release_version()
+    if not latest:
+        raise RuntimeError("Could not determine the latest PeerFold version.")
+    return latest
+
+
+def _command_error(proc: subprocess.CompletedProcess[str]) -> str:
+    detail = (proc.stderr or proc.stdout or "").strip()
+    if not detail:
+        return "Update install failed."
+    lines = [line.strip() for line in detail.splitlines() if line.strip()]
+    for line in reversed(lines):
+        if line.startswith("ERROR:") or "error" in line.lower():
+            return line
+    return lines[-1]
+
+
+def _run_package_install(py: Path, version: str) -> str:
+    spec = f"{PACKAGE}=={version}"
+    uv = _uv_tool()
+    if uv is not None:
+        env = os.environ.copy()
+        env["UV_CACHE_DIR"] = str(_peerfold_data_dir() / "cache")
+        proc = subprocess.run(
+            [str(uv), "pip", "install", "-q", "--upgrade", spec, "--python", str(py)],
+            capture_output=True,
+            text=True,
+            env=env,
+        )
+    else:
+        proc = subprocess.run(
+            [str(py), "-m", "pip", "install", "--upgrade", spec],
+            capture_output=True,
+            text=True,
+        )
+    if proc.returncode != 0:
+        raise RuntimeError(_command_error(proc))
+    installed = importlib.metadata.version(PACKAGE)
+    if version_newer(version, installed):
+        raise RuntimeError(f"Installed {PACKAGE} {installed}, expected {version}.")
+    return installed
+
+
+def _install_via_launcher(script: Path) -> dict[str, Any]:
+    proc = subprocess.run(
+        [sys.executable, str(script), "--update"],
+        capture_output=True,
+        text=True,
+        env=os.environ.copy(),
+    )
+    if proc.returncode != 0:
+        raise RuntimeError(_command_error(proc))
+    latest = _latest_install_version()
+    return {
+        "ok": True,
+        "message": (
+            f"Updated to PeerFold {latest}. Quit and reopen PeerFold to use the new version."
+        ),
+        "relaunch": False,
+        "version": latest,
     }
 
 
@@ -153,16 +249,19 @@ def _install_linux_bundle(url: str) -> dict[str, Any]:
 
 
 def _install_pip_package() -> dict[str, Any]:
-    subprocess.run(
-        [sys.executable, "-m", "pip", "install", "--upgrade", "peerfold-review"],
-        check=True,
-    )
-    latest = importlib.metadata.version("peerfold-review")
+    script = _launcher_script()
+    if script is not None:
+        return _install_via_launcher(script)
+
+    latest = _latest_install_version()
+    installed = _run_package_install(Path(sys.executable), latest)
     return {
         "ok": True,
-        "message": f"Installed peerfold-review {latest}. Quit and reopen PeerFold to use the new version.",
+        "message": (
+            f"Installed {PACKAGE} {installed}. Quit and reopen PeerFold to use the new version."
+        ),
         "relaunch": False,
-        "version": latest,
+        "version": installed,
     }
 
 

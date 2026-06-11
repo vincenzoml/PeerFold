@@ -329,6 +329,7 @@ def main() -> None:
         print(f"PeerFold {installed_version(py) or '?'} (editable ← {dev})", flush=True)
 
     env = os.environ.copy()
+    env.setdefault("PEERFOLD_LAUNCHER", str(script))
     if dev is not None:
         env.setdefault("PEERFOLD_DEV", "1")
     result = subprocess.run([str(peerfold), *args], env=env)

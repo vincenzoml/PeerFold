@@ -650,12 +650,16 @@ async function startUpdate() {
         setUpdateBarStatus(result.message || "Update installed", { notice: false });
         return;
       }
-      setUpdateBarStatus(result?.error || "Update failed", { notice: true });
+      const msg = userFacingError({ message: result?.error }, "Update failed");
+      setUpdateBarStatus(msg, { notice: true });
+      toast(msg, 5000);
     } else {
       await openExternalUrl(info.download_url || info.url);
     }
   } catch (err) {
-    setUpdateBarStatus(err.message || "Update failed", { notice: true });
+    const msg = userFacingError(err, "Update failed");
+    setUpdateBarStatus(msg, { notice: true });
+    toast(msg, 5000);
   } finally {
     if (updateBtnEl) updateBtnEl.disabled = false;
     void refreshUpdateStatus();

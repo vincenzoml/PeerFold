@@ -223,12 +223,13 @@
         </article>
 
         <article class="install-card">
-          <h2>add to any folder</h2>
-          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py && ./peerfold.py paper.pdf">
-            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py && ./peerfold.py paper.pdf</code>
+          <h2>add to any folder (win, linux and mac)</h2>
+          <button type="button" class="copy-cmd" data-copy="curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py">
+            <code>curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py</code>
             <span class="copy-label" aria-live="polite"></span>
           </button>
-          <p class="install-note"><a href="peerfold.py">peerfold.py</a> — drop in your project root; add <code>.venv-peerfold/</code> to <code>.gitignore</code>.</p>
+          <p class="install-note">Then run <code>./peerfold.py your-paper.pdf</code> (add <code>--reviewer AB</code> if you like).</p>
+          <p class="install-note"><a href="peerfold.py">peerfold.py</a> — shared package cache at <code>~/.local/share/peerfold/cache</code>.</p>
         </article>
 
         <article class="install-card">

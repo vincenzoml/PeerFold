@@ -35,10 +35,10 @@ One launcher file — pinned PyPI version, same build for every co-author. Do **
 
 ```bash
 curl -fsSL https://vincenzoml.github.io/PeerFold/peerfold.py -o peerfold.py && chmod +x peerfold.py
-./peerfold.py manuscript.pdf --reviewer AB
+./peerfold.py your-paper.pdf --reviewer AB
 ```
 
-Add `.venv-peerfold/` to `.gitignore`. **Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) into your project root.
+**Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) into your project root. Packages are cached in `~/.local/share/peerfold/cache` (uv; override with `PEERFOLD_CACHE` / `PEERFOLD_DATA`).
 
 Upgrade when needed:
 

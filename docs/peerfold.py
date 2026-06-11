@@ -6,9 +6,10 @@ Usage:
     ./peerfold.py paper.pdf --web          # over SSH
     ./peerfold.py --update                 # upgrade PyPI pin (commit after)
 
-Drop this file in your project root (copy or curl). Creates .venv-peerfold/
-(gitignored). Normal runs install the pinned version below so every co-author
-gets the same PeerFold. Run --update when you want a newer release.
+Drop this file in your project root (copy or curl). PeerFold uses one shared
+package cache under your home (~/.local/share/peerfold/cache) and keeps a
+small venv per pinned version there — no project-local installs, no repeat
+downloads when you switch between papers on the same pin.
 
 Local dev: set PEERFOLD_LOCAL=/path/to/PeerFold checkout, or put that path in
 .peerfold-local (gitignored) for editable installs with unpublished fixes.
@@ -26,16 +27,80 @@ from urllib.error import URLError
 from urllib.request import urlopen
 
 ROOT = Path(__file__).resolve().parent
-VENV = ROOT / ".venv-peerfold"
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.35"
+PEERFOLD_VERSION = "0.1.27"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
-def venv_paths() -> tuple[Path, Path]:
+def user_data_dir() -> Path:
+    override = os.environ.get("PEERFOLD_DATA", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
     if sys.platform == "win32":
-        return VENV / "Scripts" / "python.exe", VENV / "Scripts" / "peerfold.exe"
-    return VENV / "bin" / "python", VENV / "bin" / "peerfold"
+        base = os.environ.get("LOCALAPPDATA", "").strip()
+        if base:
+            return Path(base) / "PeerFold"
+        return Path.home() / "AppData" / "Local" / "PeerFold"
+    xdg = os.environ.get("XDG_DATA_HOME", "").strip()
+    if xdg:
+        return Path(xdg) / "peerfold"
+    return Path.home() / ".local" / "share" / "peerfold"
+
+
+def uv_cache_dir() -> Path:
+    override = os.environ.get("PEERFOLD_CACHE", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    return user_data_dir() / "cache"
+
+
+def venv_dir() -> Path:
+    override = os.environ.get("PEERFOLD_VENV", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
+    if local_peerfold_repo() is not None:
+        return user_data_dir() / "venvs" / "dev"
+    return user_data_dir() / "venvs" / PEERFOLD_VERSION
+
+
+def _win32() -> bool:
+    return sys.platform == "win32"
+
+
+def tools_paths() -> tuple[Path, Path]:
+    tools = user_data_dir() / "tools"
+    if _win32():
+        return tools / "Scripts" / "python.exe", tools / "Scripts" / "uv.exe"
+    return tools / "bin" / "python", tools / "bin" / "uv"
+
+
+def venv_paths() -> tuple[Path, Path]:
+    venv = venv_dir()
+    if _win32():
+        return venv / "Scripts" / "python.exe", venv / "Scripts" / "peerfold.exe"
+    return venv / "bin" / "python", venv / "bin" / "peerfold"
+
+
+def uv_env() -> dict[str, str]:
+    env = os.environ.copy()
+    env["UV_CACHE_DIR"] = str(uv_cache_dir())
+    return env
+
+
+def ensure_uv() -> Path:
+    py, uv = tools_paths()
+    if uv.is_file():
+        return uv
+    tools = py.parent.parent
+    tools.parent.mkdir(parents=True, exist_ok=True)
+    subprocess.run([sys.executable, "-m", "venv", str(tools)], check=True)
+    subprocess.run(
+        [str(py), "-m", "pip", "install", "-U", "pip", "uv"],
+        check=True,
+    )
+    if not uv.is_file():
+        raise SystemExit("Could not bootstrap uv for PeerFold")
+    return uv
 
 
 def _valid_local_repo(path: Path) -> Path | None:
@@ -64,8 +129,15 @@ def local_peerfold_repo() -> Path | None:
 
 def ensure_venv_python() -> Path:
     py, _ = venv_paths()
+    if py.is_file():
+        return py
+    venv = venv_dir()
+    venv.parent.mkdir(parents=True, exist_ok=True)
+    uv = ensure_uv()
+    subprocess.run([str(uv), "venv", str(venv)], check=True, env=uv_env())
+    py, _ = venv_paths()
     if not py.is_file():
-        subprocess.run([sys.executable, "-m", "venv", str(VENV)], check=True)
+        raise SystemExit(f"Could not create PeerFold venv at {venv}")
     return py
 
 
@@ -99,29 +171,32 @@ def latest_pypi_version() -> str:
         raise SystemExit(f"Could not reach PyPI for {PACKAGE}: {exc}") from exc
 
 
+def uv_pip_install(py: Path, *args: str) -> None:
+    uv = ensure_uv()
+    subprocess.run(
+        [str(uv), "pip", "install", *args, "--python", str(py)],
+        check=True,
+        env=uv_env(),
+    )
+
+
 def install_package(py: Path) -> None:
-    subprocess.run([str(py), "-m", "pip", "install", "-U", "pip"], check=True)
     dev = local_peerfold_repo()
     if dev is not None:
-        subprocess.run([str(py), "-m", "pip", "install", "-e", str(dev)], check=True)
+        uv_pip_install(py, "-e", str(dev))
         return
-    subprocess.run(
-        [str(py), "-m", "pip", "install", f"{PACKAGE}=={PEERFOLD_VERSION}"],
-        check=True,
-    )
+    if installed_version(py) == PEERFOLD_VERSION:
+        return
+    uv_pip_install(py, f"{PACKAGE}=={PEERFOLD_VERSION}")
 
 
 def upgrade_to_latest(py: Path) -> str:
-    subprocess.run([str(py), "-m", "pip", "install", "-U", "pip"], check=True)
     dev = local_peerfold_repo()
     if dev is not None:
-        subprocess.run([str(py), "-m", "pip", "install", "-e", str(dev)], check=True)
+        uv_pip_install(py, "-e", str(dev))
         return local_repo_version(dev)
     latest = latest_pypi_version()
-    subprocess.run(
-        [str(py), "-m", "pip", "install", "--upgrade", f"{PACKAGE}=={latest}"],
-        check=True,
-    )
+    uv_pip_install(py, "--upgrade", f"{PACKAGE}=={latest}")
     installed = installed_version(py)
     if installed != latest:
         raise SystemExit(

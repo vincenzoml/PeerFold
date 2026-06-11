@@ -45,3 +45,36 @@ def test_peerfold_launcher_matches_docs_copy():
     assert (root / "peerfold.py").read_text(encoding="utf-8") == (
         root / "docs" / "peerfold.py"
     ).read_text(encoding="utf-8")
+
+
+def test_user_data_dir_default(monkeypatch):
+    mod = load_launcher()
+    monkeypatch.delenv("PEERFOLD_DATA", raising=False)
+    monkeypatch.delenv("XDG_DATA_HOME", raising=False)
+    path = mod.user_data_dir()
+    assert path == Path.home() / ".local" / "share" / "peerfold"
+
+
+def test_venv_dir_versioned(monkeypatch):
+    mod = load_launcher()
+    monkeypatch.delenv("PEERFOLD_VENV", raising=False)
+    monkeypatch.delenv("PEERFOLD_LOCAL", raising=False)
+    monkeypatch.setattr(mod, "local_peerfold_repo", lambda: None)
+    assert mod.venv_dir() == mod.user_data_dir() / "venvs" / mod.PEERFOLD_VERSION
+
+
+def test_uv_cache_dir_default(monkeypatch):
+    mod = load_launcher()
+    monkeypatch.delenv("PEERFOLD_CACHE", raising=False)
+    monkeypatch.delenv("PEERFOLD_DATA", raising=False)
+    assert mod.uv_cache_dir() == mod.user_data_dir() / "cache"
+
+
+def test_pinned_version_on_pypi():
+    mod = load_launcher()
+    latest = mod.latest_pypi_version()
+    with __import__("urllib.request").request.urlopen(mod.PYPI_JSON, timeout=15) as resp:
+        releases = __import__("json").load(resp).get("releases", {})
+    assert mod.PEERFOLD_VERSION in releases, (
+        f"PEERFOLD_VERSION {mod.PEERFOLD_VERSION} is not on PyPI (latest: {latest})"
+    )

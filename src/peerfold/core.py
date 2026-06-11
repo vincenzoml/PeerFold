@@ -250,15 +250,13 @@ def merge_line_rects(spans: list[dict[str, Any]], *, y_tol: float = LINE_Y_TOL) 
     return rects
 
 
-def _rects_overlap(a: list[float], b: list[float], tol: float = 1.0) -> bool:
+def _rects_overlap(a: list[float], b: list[float], tol: float = 0.5) -> bool:
+    """True only when rects share positive area (edge/corner touch is not overlap)."""
     ax0, ay0, ax1, ay1 = a
     bx0, by0, bx1, by1 = b
-    return not (
-        ax1 < bx0 - tol
-        or bx1 < ax0 - tol
-        or ay1 < by0 - tol
-        or by1 < ay0 - tol
-    )
+    width = min(ax1, bx1) - max(ax0, bx0)
+    height = min(ay1, by1) - max(ay0, by0)
+    return width > tol and height > tol
 
 
 def _annotation_overlaps_rects(ann_rects: list[list[float]], new_rects: list[list[float]]) -> bool:
@@ -690,6 +688,7 @@ class PdfSession:
                 "dirty": self.save_path.exists(),
                 "file_mtime": self._disk_mtime(),
                 "revision": self.revision,
+                "dev": dev_mode(),
             }
 
     def page_spans(self, page_index: int) -> list[dict[str, Any]]:
@@ -791,19 +790,53 @@ class PdfSession:
         span_ids: list[int],
         color_name: str,
         content: str,
+        *,
+        rects: list[list[float]] | None = None,
     ) -> dict[str, Any]:
+        dev_log(
+            "create_highlight: request",
+            page=page_index,
+            span_ids=span_ids,
+            color=color_name,
+            content_len=len(content),
+            rects=rects,
+        )
         if not content.strip():
+            dev_log("create_highlight: rejected empty comment")
             raise ValueError("comment cannot be empty")
         color_name, color = resolve_color(color_name)
         with self.lock:
             spans_meta = self.page_spans(page_index)
             chosen = [spans_meta[i] for i in span_ids if 0 <= i < len(spans_meta)]
             if not chosen:
+                dev_log(
+                    "create_highlight: no spans for ids",
+                    page=page_index,
+                    span_ids=span_ids,
+                    span_count=len(spans_meta),
+                )
                 raise ValueError("no text selected")
             page = self.doc.load_page(page_index)
-            span_rects = merge_line_rects(chosen)
+            if rects:
+                span_rects = [
+                    [float(r[0]), float(r[1]), float(r[2]), float(r[3])]
+                    for r in rects
+                    if len(r) == 4 and r[2] > r[0] and r[3] > r[1]
+                ]
+                if not span_rects:
+                    dev_log("create_highlight: invalid rects", rects=rects)
+                    raise ValueError("no text selected")
+            else:
+                span_rects = merge_line_rects(chosen)
             for ex in self._list_highlights_in_doc(self.doc):
                 if ex["page"] == page_index and _annotation_overlaps_rects(ex["rects"], span_rects):
+                    dev_log(
+                        "create_highlight: overlap",
+                        page=page_index,
+                        new_rects=span_rects,
+                        existing_id=ex.get("id"),
+                        existing_rects=ex.get("rects"),
+                    )
                     raise ValueError("highlight overlaps an existing highlight")
             quads = [self.fitz.Rect(*rect).quad for rect in span_rects]
             annot = page.add_highlight_annot(quads)
@@ -814,6 +847,7 @@ class PdfSession:
             self._persist()
             payload = self._annot_response(self._annot_dict(page_index, annot, color_name, rects=span_rects))
             payload["save_path"] = str(self.save_path)
+            dev_log("create_highlight: ok", id=payload.get("id"), page=page_index, rects=span_rects)
             return payload
 
     def _rects_from_annot(self, annot) -> list[list[float]]:
@@ -1075,6 +1109,7 @@ class ServerSession:
             "dirty": False,
             "file_mtime": 0.0,
             "revision": 0,
+            "dev": dev_mode(),
         }
 
     def document_info(self) -> dict[str, Any]:
@@ -1390,7 +1425,14 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 span_ids = list(data.get("span_ids") or [])
                 color = str(data.get("color") or "yellow")
                 content = str(data.get("content") or "")
-                created = self.session.create_highlight(page_index, span_ids, color, content)
+                rects = data.get("rects")
+                created = self.session.create_highlight(
+                    page_index,
+                    span_ids,
+                    color,
+                    content,
+                    rects=list(rects) if rects else None,
+                )
                 return self._json(201, created)
             if path == "/api/annotations/batch-delete":
                 data = self._read_json()
@@ -1575,6 +1617,24 @@ def update_check_payload() -> dict[str, Any]:
         "can_install": bool(available and support.get("can_install")),
         "install_mode": support.get("mode"),
     }
+
+
+def dev_mode() -> bool:
+    raw = os.environ.get("PEERFOLD_DEV", "").strip().lower()
+    if raw in ("1", "true", "yes"):
+        return True
+    if raw in ("0", "false", "no"):
+        return False
+    return bool(os.environ.get("PEERFOLD_LOCAL", "").strip())
+
+
+def dev_log(msg: str, **details: Any) -> None:
+    if not dev_mode():
+        return
+    if details:
+        print(f"[peerfold:dev] {msg} {details}", flush=True)
+    else:
+        print(f"[peerfold:dev] {msg}", flush=True)
 
 
 def terminal_verbose() -> bool:

@@ -7,6 +7,7 @@ from peerfold import __version__
 from peerfold.core import (
     PALETTE,
     PdfSession,
+    _rects_overlap,
     annotated_path,
     app_version,
     build_citation_index,
@@ -193,3 +194,15 @@ def test_batch_update_colors(tmp_path, monkeypatch):
         assert all(item["color"] == "blue" for item in listed)
     finally:
         session.close()
+
+
+def test_rects_overlap_corner_touch_is_not_overlap():
+    new_rect = [270.2026110197368, 167.78248596191406, 304.9469299316406, 182.896484375]
+    existing = [304.9469299316406, 151.8187255859375, 411.3168640136719, 166.9327392578125]
+    assert not _rects_overlap(new_rect, existing)
+
+
+def test_rects_overlap_positive_area():
+    assert _rects_overlap([0, 0, 10, 10], [5, 5, 15, 15])
+    assert not _rects_overlap([0, 0, 10, 10], [10, 0, 20, 10])
+    assert not _rects_overlap([0, 0, 10, 10], [0, 10, 10, 20])

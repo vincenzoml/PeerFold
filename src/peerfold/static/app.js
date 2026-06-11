@@ -1,5 +1,19 @@
 const SPAN_PICK_MAX_DIST = 14;
+const DEV = true;
 let draftSaveTimer = null;
+let ctxSuppressCloseUntil = 0;
+
+function devLog(label, detail) {
+  if (!DEV) return;
+  if (detail === undefined) console.log("[peerfold]", label);
+  else console.log("[peerfold]", label, detail);
+}
+
+function devWarn(label, detail) {
+  if (!DEV) return;
+  if (detail === undefined) console.warn("[peerfold]", label);
+  else console.warn("[peerfold]", label, detail);
+}
 
 const state = {
   doc: null,
@@ -14,6 +28,7 @@ const state = {
   locateTimer: null,
   pendingNote: null,
   draft: null,
+  lastRenderedDraftKey: null,
   textSelection: null,
   loadingPages: new Set(),
   pageLoadGen: new Map(),
@@ -141,7 +156,10 @@ async function api(path, opts = {}) {
     err.noDocument = true;
     throw err;
   }
-  if (!res.ok) throw new Error(data.error || res.statusText);
+  if (!res.ok) {
+    if (DEV) devWarn("api error", { path, status: res.status, error: data.error || res.statusText, body: data });
+    throw new Error(data.error || res.statusText);
+  }
   return data;
 }
 
@@ -467,26 +485,36 @@ function renderUpdateUi(info) {
   if (appVersionCurrentEl) appVersionCurrentEl.textContent = `v${current}`;
 
   if (!info?.check_ok) {
-    if (appVersionAvailableEl) appVersionAvailableEl.hidden = true;
+    if (appVersionAvailableEl) {
+      appVersionAvailableEl.hidden = true;
+      appVersionAvailableEl.classList.remove("is-notice");
+    }
     if (updateBtnEl) updateBtnEl.hidden = true;
     return;
   }
 
   if (info.update_available && info.latest) {
+    const label = info.can_install ? `Update to v${info.latest}` : `v${info.latest} available`;
+    const title = info.can_install
+      ? `Install PeerFold v${info.latest}`
+      : `Download PeerFold v${info.latest}`;
     if (appVersionAvailableEl) {
-      appVersionAvailableEl.textContent = `→ v${info.latest}`;
+      appVersionAvailableEl.textContent = label;
+      appVersionAvailableEl.title = title;
       appVersionAvailableEl.hidden = false;
+      appVersionAvailableEl.classList.add("is-notice");
     }
     if (updateBtnEl) {
       updateBtnEl.hidden = false;
       updateBtnEl.disabled = false;
       updateBtnEl.textContent = info.can_install ? "Update" : "Download";
-      updateBtnEl.title = info.can_install
-        ? `Install PeerFold v${info.latest}`
-        : `Download PeerFold v${info.latest}`;
+      updateBtnEl.title = title;
     }
   } else {
-    if (appVersionAvailableEl) appVersionAvailableEl.hidden = true;
+    if (appVersionAvailableEl) {
+      appVersionAvailableEl.hidden = true;
+      appVersionAvailableEl.classList.remove("is-notice");
+    }
     if (updateBtnEl) updateBtnEl.hidden = true;
   }
 }
@@ -506,6 +534,13 @@ async function refreshUpdateStatus() {
   }
 }
 
+function setUpdateBarStatus(text, { notice = false } = {}) {
+  if (!appVersionAvailableEl) return;
+  appVersionAvailableEl.textContent = text;
+  appVersionAvailableEl.hidden = false;
+  appVersionAvailableEl.classList.toggle("is-notice", notice);
+}
+
 async function startUpdate() {
   const info = state.updateInfo;
   if (!info?.update_available) return;
@@ -513,19 +548,20 @@ async function startUpdate() {
     updateBtnEl.disabled = true;
     updateBtnEl.textContent = "Updating…";
   }
+  setUpdateBarStatus("Updating…", { notice: false });
   try {
     if (window.pywebview?.api?.install_update && info.can_install) {
       const result = await window.pywebview.api.install_update();
       if (result?.ok) {
-        toast(result.message || "Update installed.", 6000);
+        setUpdateBarStatus(result.message || "Update installed", { notice: false });
         return;
       }
-      toast(result?.error || "Update failed.", 5000);
+      setUpdateBarStatus(result?.error || "Update failed", { notice: true });
     } else {
       await openExternalUrl(info.download_url || info.url);
     }
   } catch (err) {
-    toast(err.message || "Update failed.", 5000);
+    setUpdateBarStatus(err.message || "Update failed", { notice: true });
   } finally {
     if (updateBtnEl) updateBtnEl.disabled = false;
     void refreshUpdateStatus();
@@ -536,19 +572,19 @@ async function checkForUpdates({ force = false } = {}) {
   const info = await refreshUpdateStatus();
   if (!force) return;
   if (!info?.check_ok) {
-    toast("Could not check for updates.", 3000);
+    setUpdateBarStatus("Could not check for updates", { notice: true });
     return;
   }
-  if (info.update_available) {
-    toast(
-      info.can_install
-        ? `Update v${info.latest} ready — click Update in the top bar.`
-        : `Update v${info.latest} available — click Download in the top bar.`,
-      4000,
-    );
-    return;
+  if (!info.update_available) {
+    setUpdateBarStatus(`v${info.current} is up to date`, { notice: false });
+    clearTimeout(checkForUpdates._clearT);
+    checkForUpdates._clearT = setTimeout(() => {
+      if (!state.updateInfo?.update_available) {
+        appVersionAvailableEl.hidden = true;
+        appVersionAvailableEl.classList.remove("is-notice");
+      }
+    }, 3500);
   }
-  toast(`PeerFold v${info.current} is up to date.`, 3500);
 }
 
 function scheduleUpdateChecks() {
@@ -560,6 +596,11 @@ function scheduleUpdateChecks() {
 function hideCtx() {
   ctxMenu.hidden = true;
   ctxMenu.innerHTML = "";
+  ctxSuppressCloseUntil = 0;
+}
+
+function suppressCtxClose(ms = 400) {
+  ctxSuppressCloseUntil = Date.now() + ms;
 }
 
 function basename(p) {
@@ -632,6 +673,7 @@ function clearDraft() {
   draftSaveTimer = null;
   clearPreviewLayers();
   state.draft = null;
+  state.lastRenderedDraftKey = null;
   closeCommentEditor();
   updateDocMeta();
   renderCommentsPane();
@@ -646,12 +688,35 @@ function draftText() {
   return trimText(state.draft?.text ?? commentEditorTa?.value ?? "");
 }
 
-async function settleDraft() {
-  if (!state.draft || state.draft.committed) return;
+async function settleDraft(trigger = "settle") {
+  if (!state.draft || state.draft.committed) {
+    devLog("settleDraft: no active draft", { trigger });
+    return;
+  }
   clearTimeout(draftSaveTimer);
   draftSaveTimer = null;
-  if (draftText()) await onDraftEditorInputSave();
-  else clearDraft();
+  syncDraftTextFromEditor();
+  const text = draftText();
+  const rects = draftCommitRects();
+  let saved = false;
+  if (text && rects.length) {
+    if (state.draft.saving) {
+      devLog("settleDraft: waiting for in-flight save", { trigger });
+      for (let i = 0; i < 40 && state.draft?.saving; i += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
+    if (state.draft && !state.draft.saving) saved = await onDraftEditorInputSave(trigger);
+  } else {
+    devLog("settleDraft: skip save", {
+      trigger,
+      reason: !text ? "empty text" : "no commit rects",
+      displayRectCount: draftDisplayRects().length,
+      commitRectCount: state.draft.commitRects?.length ?? 0,
+    });
+  }
+  devLog("settleDraft: done", { trigger, saved, draftRemains: Boolean(state.draft) });
+  if (state.draft) clearDraft();
 }
 
 function settleDraftSync() {
@@ -660,6 +725,77 @@ function settleDraftSync() {
   draftSaveTimer = null;
   if (draftText()) void onDraftEditorInputSave();
   else clearDraft();
+}
+
+function draftSelectionKey(draft) {
+  if (!draft) return "";
+  const ids = draft.displaySpanIds?.length ? draft.displaySpanIds : draft.spanIds;
+  return [
+    draft.pageIndex,
+    (ids || []).join("\x1f"),
+    draft.anchorId,
+    draft.focusId,
+    Math.round((draft.anchorX ?? 0) * 10),
+    Math.round((draft.anchorY ?? 0) * 10),
+    Math.round((draft.focusX ?? 0) * 10),
+    Math.round((draft.focusY ?? 0) * 10),
+  ].join("|");
+}
+
+function snapshotDraftForSave(draft, text) {
+  const rects = draftCommitRects(draft);
+  const trimmed = trimText(text);
+  if (!draft || !rects.length || !trimmed) return null;
+  return {
+    pageIndex: draft.pageIndex,
+    spanIds: draft.spanIds,
+    rects,
+    color: draft.color,
+    text: trimmed,
+  };
+}
+
+async function saveDraftSnapshot(snap) {
+  if (!snap) return;
+  devLog("saveDraftSnapshot: starting", snap);
+  try {
+    const created = await withSave(() => api("/api/annotations", {
+      method: "POST",
+      body: JSON.stringify({
+        page: snap.pageIndex,
+        span_ids: snap.spanIds,
+        rects: snap.rects,
+        color: snap.color,
+        content: snap.text,
+      }),
+    }));
+    state.annotations.set(created.id, created);
+    if (!state.historyApplying) {
+      pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
+    }
+    renderAllHighlights();
+    await refreshPageBitmap(snap.pageIndex);
+    syncDocFlags(await api("/api/document"));
+    emergencyBackup();
+    const savePath = created.save_path || state.doc?.save_path;
+    if (savePath && state.doc) state.doc.save_path = savePath;
+    updateDocMeta();
+    renderCommentsPane();
+    devLog("saveDraftSnapshot: ok", { id: created.id });
+  } catch (err) {
+    devWarn("saveDraftSnapshot: failed", { message: err.message, snap });
+  }
+}
+
+function prepareDraftForNewSelection() {
+  if (!state.draft || state.draft.committed || state.draft.saving) return;
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
+  syncDraftTextFromEditor();
+  const snap = snapshotDraftForSave(state.draft, draftText());
+  state.lastRenderedDraftKey = null;
+  clearDraft();
+  if (snap) void saveDraftSnapshot(snap);
 }
 
 function editorIsOpen() {
@@ -673,9 +809,7 @@ function editorIsOpen() {
 
 async function dismissEditorFromViewerBackground() {
   if (state.draft && !state.draft.committed) {
-    syncDraftTextFromEditor();
-    if (draftText()) await onDraftEditorInputSave();
-    else clearDraft();
+    await settleDraft();
     return;
   }
   if (state.pendingNote || state.focusId) {
@@ -686,15 +820,16 @@ async function dismissEditorFromViewerBackground() {
 }
 
 document.addEventListener("click", (e) => {
-  if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) hideCtx();
+  if (!ctxMenu.hidden && !ctxMenu.contains(e.target)) {
+    if (Date.now() < ctxSuppressCloseUntil) return;
+    hideCtx();
+  }
   if (!state.draft || state.draft.committed) return;
   if (e.target.closest("#comment-editor")) return;
   if (e.target.closest(".comment-card")) return;
-  if (e.target.closest("#viewer")) return;
   if (e.target.closest("#comments-pane")) return;
-  syncDraftTextFromEditor();
-  if (draftText()) void settleDraft();
-  else clearDraft();
+  if (Date.now() - (state.draft.createdAt ?? 0) < 350) return;
+  void settleDraft();
 });
 
 document.addEventListener("mousedown", (e) => {
@@ -705,7 +840,6 @@ document.addEventListener("mousedown", (e) => {
   if (e.target.closest("#comment-editor")) return;
   if (e.target.closest(".comment-card.draft")) return;
   if (e.target.closest(".comment-card:not(.draft)")) return;
-  if (e.target.closest(".highlight-group")) return;
   if (e.target.closest(".pdf-link")) return;
 
   const pageEl = e.target.closest(".page");
@@ -722,7 +856,7 @@ document.addEventListener("mousedown", (e) => {
     return;
   }
 
-  if (e.target.closest("#viewer") && editorIsOpen()) {
+  if (e.target.closest("#viewer") && editorIsOpen() && !e.target.closest(".page")) {
     void dismissEditorFromViewerBackground();
     return;
   }
@@ -945,7 +1079,7 @@ async function applyPaletteColor(name, { ids = null } = {}) {
   if (targets.kind === "draft") {
     state.draft.color = name;
     const meta = pageMeta(state.draft.pageIndex);
-    if (meta) renderDraftOverlay(meta, state.draft.rects);
+    if (meta) renderActiveDraftOverlay();
     setCommentChromeColor(hex);
     return;
   }
@@ -1062,35 +1196,6 @@ function spanRangeOrdered(spans, idA, idB) {
   return spans.slice(lo, hi + 1).map((s) => s.id);
 }
 
-function bboxIntersectsRect(bbox, rect) {
-  const [x0, y0, x1, y1] = bbox;
-  const [rx0, ry0, rx1, ry1] = rect;
-  return !(x1 < rx0 || x0 > rx1 || y1 < ry0 || y0 > ry1);
-}
-
-function spanIdsInSelectionRect(spans, anchorId, focusId) {
-  const a = spans[anchorId];
-  const f = spans[focusId];
-  if (!a) return [];
-  if (!f) return [anchorId];
-  const rect = [
-    Math.min(a.bbox[0], f.bbox[0]),
-    Math.min(a.bbox[1], f.bbox[1]),
-    Math.max(a.bbox[2], f.bbox[2]),
-    Math.max(a.bbox[3], f.bbox[3]),
-  ];
-  const ids = [];
-  for (const sp of spans) {
-    if (bboxIntersectsRect(sp.bbox, rect)) ids.push(sp.id);
-  }
-  ids.sort((ida, idb) => {
-    const sa = spans[ida];
-    const sb = spans[idb];
-    return sa.bbox[1] - sb.bbox[1] || sa.bbox[0] - sb.bbox[0];
-  });
-  return ids;
-}
-
 function textFromSpanIds(meta, spanIds) {
   const ordered = spanIds
     .map((id) => meta.spans[id])
@@ -1108,15 +1213,243 @@ function textFromSpanIds(meta, spanIds) {
   return out;
 }
 
+function charIndexAtX(span, x) {
+  const [x0, , x1] = span.bbox;
+  const text = span.text || "";
+  if (!text.length) return 0;
+  if (x <= x0) return 0;
+  if (x >= x1) return text.length;
+  const ratio = (x - x0) / Math.max(x1 - x0, 0.001);
+  return Math.max(0, Math.min(text.length, Math.round(ratio * text.length)));
+}
+
+function pdfXForCharIndex(span, index) {
+  const [x0, , x1] = span.bbox;
+  const text = span.text || "";
+  if (!text.length) return x0;
+  const ratio = Math.max(0, Math.min(1, index / text.length));
+  return x0 + ratio * (x1 - x0);
+}
+
+function wordBoundsAtX(span, x) {
+  const text = span.text || "";
+  if (!text.length) return null;
+  let ci = charIndexAtX(span, x);
+  if (!/\S/.test(text[ci] ?? "")) {
+    let left = ci;
+    let right = ci;
+    while (left > 0 && !/\S/.test(text[left - 1])) left -= 1;
+    while (right < text.length && !/\S/.test(text[right])) right += 1;
+    if (left > 0 && /\S/.test(text[left - 1])) ci = left - 1;
+    else if (right < text.length && /\S/.test(text[right])) ci = right;
+    else return null;
+  }
+  let start = ci;
+  let end = ci;
+  while (start > 0 && /\S/.test(text[start - 1])) start -= 1;
+  while (end < text.length - 1 && /\S/.test(text[end + 1])) end += 1;
+  end += 1;
+  if (!/\S/.test(text.slice(start, end))) return null;
+  return {
+    start,
+    end,
+    x0: pdfXForCharIndex(span, start),
+    x1: pdfXForCharIndex(span, end),
+    y0: span.bbox[1],
+    y1: span.bbox[3],
+  };
+}
+
+function selectionForward(anchorSpan, focusSpan, anchorX, focusX) {
+  if (!anchorSpan || !focusSpan) return true;
+  if (Math.abs(anchorSpan.bbox[1] - focusSpan.bbox[1]) > LINE_Y_TOL) {
+    return anchorSpan.bbox[1] < focusSpan.bbox[1];
+  }
+  return anchorX <= focusX;
+}
+
+function clipSelectionRects(meta, spanIds, anchorId, focusId, anchorX, anchorY, focusX, focusY) {
+  const chosen = spanIds.map((id) => meta.spans.find((s) => s.id === id)).filter(Boolean);
+  if (!chosen.length) return [];
+
+  const anchorSpan = meta.spans.find((s) => s.id === anchorId);
+  const focusSpan = meta.spans.find((s) => s.id === focusId);
+  const ordered = [...chosen].sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  const lines = [];
+  for (const sp of ordered) {
+    let line = lines.find((l) => Math.abs(l[0].bbox[1] - sp.bbox[1]) <= LINE_Y_TOL);
+    if (line) line.push(sp);
+    else lines.push([sp]);
+  }
+
+  const rects = lines.map((line) => [
+    Math.min(...line.map((s) => s.bbox[0])),
+    Math.min(...line.map((s) => s.bbox[1])),
+    Math.max(...line.map((s) => s.bbox[2])),
+    Math.max(...line.map((s) => s.bbox[3])),
+  ]);
+
+  if (!anchorSpan || !focusSpan) return rects;
+
+  const sameLine = Math.abs(anchorSpan.bbox[1] - focusSpan.bbox[1]) <= LINE_Y_TOL;
+  if (sameLine) {
+    const xLo = Math.min(anchorX, focusX);
+    const xHi = Math.max(anchorX, focusX);
+    const idx = lines.findIndex((l) => Math.abs(l[0].bbox[1] - anchorSpan.bbox[1]) <= LINE_Y_TOL);
+    if (idx < 0) return rects;
+    rects[idx][0] = Math.max(rects[idx][0], xLo);
+    rects[idx][2] = Math.min(rects[idx][2], xHi);
+    return rects[idx][2] > rects[idx][0] + 0.5 ? [rects[idx]] : [];
+  }
+
+  const forward = selectionForward(anchorSpan, focusSpan, anchorX, focusX);
+  const anchorLineIdx = lines.findIndex((l) => Math.abs(l[0].bbox[1] - anchorSpan.bbox[1]) <= LINE_Y_TOL);
+  const focusLineIdx = lines.findIndex((l) => Math.abs(l[0].bbox[1] - focusSpan.bbox[1]) <= LINE_Y_TOL);
+
+  if (forward) {
+    if (anchorLineIdx >= 0) rects[anchorLineIdx][0] = Math.max(rects[anchorLineIdx][0], anchorX);
+    if (focusLineIdx >= 0) rects[focusLineIdx][2] = Math.min(rects[focusLineIdx][2], focusX);
+  } else {
+    if (anchorLineIdx >= 0) rects[anchorLineIdx][2] = Math.min(rects[anchorLineIdx][2], anchorX);
+    if (focusLineIdx >= 0) rects[focusLineIdx][0] = Math.max(rects[focusLineIdx][0], focusX);
+  }
+
+  return rects.filter((r) => r[2] > r[0] + 0.5);
+}
+
+function clipLineRectAtHighlights(pageIndex, rect, forward) {
+  let [x0, y0, x1, y1] = rect;
+  const hits = [];
+  for (const ann of state.annotations.values()) {
+    if (ann.page !== pageIndex) continue;
+    for (const hr of ann.rects) {
+      if (rectsOverlap([x0, y0, x1, y1], hr)) hits.push(hr);
+    }
+  }
+  if (!hits.length) return rect;
+  if (forward) {
+    let cut = x1;
+    for (const hr of hits) {
+      if (hr[0] > x0 && hr[0] < cut) cut = hr[0];
+    }
+    x1 = cut;
+  } else {
+    let cut = x0;
+    for (const hr of hits) {
+      if (hr[2] < x1 && hr[2] > cut) cut = hr[2];
+    }
+    x0 = cut;
+  }
+  return [x0, y0, x1, y1];
+}
+
+function selectionRectsForDraft(
+  meta,
+  pageIndex,
+  spanIds,
+  anchorId,
+  focusId,
+  anchorX,
+  anchorY,
+  focusX,
+  focusY,
+) {
+  const anchorSpan = meta.spans.find((s) => s.id === anchorId);
+  const focusSpan = meta.spans.find((s) => s.id === focusId);
+  const forward = selectionForward(anchorSpan, focusSpan, anchorX, focusX);
+  return clipSelectionRects(meta, spanIds, anchorId, focusId, anchorX, anchorY, focusX, focusY)
+    .map((rect) => clipLineRectAtHighlights(pageIndex, rect, forward))
+    .filter((r) => r[2] > r[0] + 0.5);
+}
+
+function textFromSelection(meta, spanIds, anchorId, focusId, anchorX, anchorY, focusX, focusY) {
+  const chosen = spanIds.map((id) => meta.spans.find((s) => s.id === id)).filter(Boolean);
+  if (!chosen.length) return "";
+
+  const anchorSpan = meta.spans.find((s) => s.id === anchorId);
+  const focusSpan = meta.spans.find((s) => s.id === focusId);
+  const forward = selectionForward(anchorSpan, focusSpan, anchorX, focusX);
+  const sameLine = anchorSpan && focusSpan
+    && Math.abs(anchorSpan.bbox[1] - focusSpan.bbox[1]) <= LINE_Y_TOL;
+  const ordered = [...chosen].sort((a, b) => a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  let out = "";
+  let lastLineY = null;
+
+  for (const sp of ordered) {
+    let start = 0;
+    let end = sp.text.length;
+
+    if (sameLine && anchorId === focusId && sp.id === anchorId) {
+      start = charIndexAtX(sp, Math.min(anchorX, focusX));
+      end = charIndexAtX(sp, Math.max(anchorX, focusX));
+    } else {
+      if (anchorSpan && Math.abs(sp.bbox[1] - anchorSpan.bbox[1]) <= LINE_Y_TOL) {
+        const ci = charIndexAtX(sp, anchorX);
+        if (forward) start = Math.max(start, ci);
+        else end = Math.min(end, ci);
+      }
+      if (focusSpan && Math.abs(sp.bbox[1] - focusSpan.bbox[1]) <= LINE_Y_TOL) {
+        const ci = charIndexAtX(sp, focusX);
+        if (forward) end = Math.min(end, ci);
+        else start = Math.max(start, ci);
+      }
+    }
+
+    const slice = sp.text.slice(start, end);
+    if (!slice) continue;
+    const y = sp.bbox[1];
+    if (lastLineY != null && Math.abs(y - lastLineY) > LINE_Y_TOL) out += "\n";
+    else if (out) out += " ";
+    out += slice;
+    lastLineY = y;
+  }
+  return out;
+}
+
+function draftDisplayRects(draft = state.draft) {
+  if (draft?.displayRects?.length) return draft.displayRects;
+  return draft?.rects || [];
+}
+
+function draftDisplaySpanIds(draft = state.draft) {
+  if (draft?.displaySpanIds?.length) return draft.displaySpanIds;
+  return draft?.spanIds || [];
+}
+
+function draftCommitRects(draft = state.draft) {
+  return draft?.commitRects?.length ? draft.commitRects : [];
+}
+
+function renderActiveDraftOverlay(pageIndex = state.draft?.pageIndex) {
+  const meta = pageMeta(pageIndex);
+  if (!meta || !state.draft) return;
+  renderDraftOverlay(meta, draftDisplayRects());
+}
+
 function currentTextSelection() {
   if (state.draft && !state.draft.committed) {
-    return { pageIndex: state.draft.pageIndex, spanIds: state.draft.spanIds };
+    return {
+      pageIndex: state.draft.pageIndex,
+      spanIds: draftDisplaySpanIds(),
+      anchorId: state.draft.anchorId,
+      focusId: state.draft.focusId,
+      anchorX: state.draft.anchorX,
+      anchorY: state.draft.anchorY,
+      focusX: state.draft.focusX,
+      focusY: state.draft.focusY,
+    };
   }
   if (state.textSelection?.spanIds?.length) return state.textSelection;
   if (state.selecting && state.activeSelection?.meta?._dragSpanIds?.length) {
     return {
       pageIndex: state.activeSelection.pageIndex,
       spanIds: state.activeSelection.meta._dragSpanIds,
+      anchorId: state.activeSelection.anchorId,
+      focusId: state.activeSelection.focusId,
+      anchorX: state.activeSelection.anchorX,
+      anchorY: state.activeSelection.anchorY,
+      focusX: state.activeSelection.focusX,
+      focusY: state.activeSelection.focusY,
     };
   }
   return null;
@@ -1127,7 +1460,18 @@ async function copySelectedText() {
   if (!sel?.spanIds?.length) return;
   const meta = pageMeta(sel.pageIndex);
   if (!meta) return;
-  const text = textFromSpanIds(meta, sel.spanIds);
+  const text = sel.anchorId != null && sel.focusId != null
+    ? textFromSelection(
+      meta,
+      sel.spanIds,
+      sel.anchorId,
+      sel.focusId,
+      sel.anchorX,
+      sel.anchorY,
+      sel.focusX,
+      sel.focusY,
+    )
+    : textFromSpanIds(meta, sel.spanIds);
   if (!text) return;
   try {
     await navigator.clipboard.writeText(text);
@@ -1179,37 +1523,67 @@ function spanIdAtClient(meta, pageIndex, clientX, clientY, { strict = false } = 
   return nearestId;
 }
 
-function spanIdForDragSelection(meta, pageIndex, clientX, clientY, anchorId) {
-  const hit = spanIdAtClient(meta, pageIndex, clientX, clientY, { strict: false });
+function uniqueLineYs(spans) {
+  const ys = new Set();
+  for (const sp of spans) ys.add(sp.bbox[1]);
+  return [...ys].sort((a, b) => a - b);
+}
+
+function spanIdOnLineAtX(spans, lineY, x) {
+  const line = spans.filter((sp) => Math.abs(sp.bbox[1] - lineY) <= LINE_Y_TOL);
+  if (!line.length) return null;
+  let best = line[0];
+  let bestScore = Infinity;
+  for (const sp of line) {
+    const [x0, , x1] = sp.bbox;
+    let score = 0;
+    if (x < x0) score = x0 - x;
+    else if (x > x1) score = x - x1;
+    if (score < bestScore) {
+      bestScore = score;
+      best = sp;
+    }
+  }
+  return best.id;
+}
+
+function spanIdForDragSelection(meta, pageIndex, clientX, clientY, anchorId, startClientY = null) {
+  const hit = spanIdAtClient(meta, pageIndex, clientX, clientY, { strict: true });
   if (hit != null) return hit;
   if (!meta.spans?.length) return null;
 
   const { x, y } = clientToPdf(meta, pageIndex, clientX, clientY);
-  const band = [];
-  for (const sp of meta.spans) {
-    const [, y0, , y1] = sp.bbox;
-    if (y >= y0 - LINE_Y_TOL * 2 && y <= y1 + LINE_Y_TOL * 2) band.push(sp);
-  }
-  if (band.length) {
-    let best = band[0];
-    let bestScore = Infinity;
-    for (const sp of band) {
-      const [x0, , x1] = sp.bbox;
-      let score = 0;
-      if (x < x0) score = x0 - x;
-      else if (x > x1) score = x - x1;
-      if (score < bestScore) {
-        bestScore = score;
-        best = sp;
-      }
+  const lineYs = uniqueLineYs(meta.spans);
+  if (!lineYs.length) return null;
+
+  const dragUp = startClientY != null && clientY < startClientY;
+  const dragDown = startClientY != null && clientY > startClientY;
+  let pickedY = lineYs[0];
+  let bestDist = Infinity;
+  for (const ly of lineYs) {
+    const dist = Math.abs(y - ly);
+    if (dist < bestDist) {
+      bestDist = dist;
+      pickedY = ly;
     }
-    return best.id;
   }
 
-  const anchorIdx = meta.spans.findIndex((sp) => sp.id === anchorId);
-  if (anchorIdx < 0) return meta.spans[meta.spans.length - 1].id;
-  const anchorMidY = (meta.spans[anchorIdx].bbox[1] + meta.spans[anchorIdx].bbox[3]) / 2;
-  return y >= anchorMidY ? meta.spans[meta.spans.length - 1].id : meta.spans[0].id;
+  if (startClientY != null) {
+    for (let i = 0; i < lineYs.length - 1; i += 1) {
+      const y0 = lineYs[i];
+      const y1 = lineYs[i + 1];
+      if (y <= y0 || y >= y1) continue;
+      if (dragUp) pickedY = y0;
+      else if (dragDown) pickedY = y1;
+      else pickedY = y - y0 <= y1 - y ? y0 : y1;
+      break;
+    }
+  }
+
+  const onLine = spanIdOnLineAtX(meta.spans, pickedY, x);
+  if (onLine != null) return onLine;
+
+  return spanIdAtClient(meta, pageIndex, clientX, clientY, { strict: false });
 }
 
 function autoScrollViewerDuringSelection(clientY) {
@@ -1232,6 +1606,82 @@ function selectionOverlapsOthers(pageIndex, spanIds, exceptId = null) {
   );
 }
 
+function spanOverlapsOthers(meta, pageIndex, spanId, exceptId = null) {
+  const sp = meta.spans.find((s) => s.id === spanId);
+  if (!sp) return false;
+  return [...state.annotations.values()].some(
+    (ann) => ann.page === pageIndex
+      && ann.id !== exceptId
+      && ann.rects.some((ar) => rectsOverlap(sp.bbox, ar)),
+  );
+}
+
+function pointInRect(x, y, rect, pad = 1) {
+  const [x0, y0, x1, y1] = rect;
+  return x >= x0 - pad && x <= x1 + pad && y >= y0 - pad && y <= y1 + pad;
+}
+
+function pointInAnnotationRects(pageIndex, x, y, exceptId = null) {
+  return [...state.annotations.values()].some(
+    (ann) => ann.page === pageIndex
+      && ann.id !== exceptId
+      && ann.rects.some((rect) => pointInRect(x, y, rect)),
+  );
+}
+
+function annotationAtPdfPoint(pageIndex, x, y, exceptId = null) {
+  let best = null;
+  let bestArea = Infinity;
+  for (const ann of state.annotations.values()) {
+    if (ann.page !== pageIndex || ann.id === exceptId) continue;
+    for (const rect of ann.rects) {
+      if (!pointInRect(x, y, rect)) continue;
+      const [x0, y0, x1, y1] = rect;
+      const area = (x1 - x0) * (y1 - y0);
+      if (area < bestArea) {
+        bestArea = area;
+        best = ann;
+      }
+    }
+  }
+  return best;
+}
+
+function annotationAtClient(pageIndex, clientX, clientY, exceptId = null) {
+  const meta = pageMeta(pageIndex);
+  if (!meta) return null;
+  const { x, y } = clientToPdf(meta, pageIndex, clientX, clientY);
+  return annotationAtPdfPoint(pageIndex, x, y, exceptId);
+}
+
+function trimSelectionAtFirstHighlight(
+  meta,
+  pageIndex,
+  spanIds,
+  anchorId,
+  focusId,
+  anchorX,
+  anchorY,
+  exceptId = null,
+) {
+  if (!spanIds.length) return [];
+  if (pointInAnnotationRects(pageIndex, anchorX, anchorY, exceptId)) return [];
+
+  const idxA = spanIds.indexOf(anchorId);
+  const idxF = spanIds.indexOf(focusId ?? anchorId);
+  if (idxA < 0) return [];
+
+  const step = idxF >= idxA ? 1 : -1;
+  const result = [];
+  for (let i = idxA; ; i += step) {
+    const id = spanIds[i];
+    if (id !== anchorId && spanOverlapsOthers(meta, pageIndex, id, exceptId)) break;
+    result.push(id);
+    if (i === idxF) break;
+  }
+  return step > 0 ? result : result.reverse();
+}
+
 function spanIdsFromAnnotation(meta, ann) {
   return meta.spans
     .filter((sp) => ann.rects.some((r) => rectsOverlap(sp.bbox, r)))
@@ -1251,10 +1701,24 @@ function spanIdsEqual(a, b) {
 }
 
 function updateSelectionOverlay(sel, focusId) {
-  const ids = spanIdsInSelectionRect(sel.meta.spans, sel.anchorId, focusId);
+  const ids = spanRangeOrdered(sel.meta.spans, sel.anchorId, focusId);
   sel.meta._dragSpanIds = ids;
   sel.focusId = focusId;
-  renderDraftOverlay(sel.meta, mergeLineRects(sel.meta.spans, ids));
+  if (!ids.length) {
+    sel.meta.draftLayer?.replaceChildren();
+    return;
+  }
+  const rects = clipSelectionRects(
+    sel.meta,
+    ids,
+    sel.anchorId,
+    focusId,
+    sel.anchorX,
+    sel.anchorY,
+    sel.focusX,
+    sel.focusY,
+  );
+  renderDraftOverlay(sel.meta, rects);
 }
 
 function updateExtendPreview(gesture, focusId) {
@@ -1272,8 +1736,17 @@ function updateExtendPreview(gesture, focusId) {
 
 function setSelectingUi(active, pageEl = null) {
   for (const meta of state.pages.values()) {
-    meta.pageEl?.classList.toggle("is-selecting", active && meta.pageEl === pageEl);
+    const el = meta.pageEl;
+    if (!el) continue;
+    el.classList.toggle("is-selecting", active && el === pageEl);
+    if (active && el === pageEl) el.classList.remove("is-over-text");
   }
+}
+
+function setPageTextHover(meta, pageIndex, clientX, clientY) {
+  if (!meta?.pageEl || state.selecting) return;
+  const onText = spanIdAtClient(meta, pageIndex, clientX, clientY, { strict: true }) != null;
+  meta.pageEl.classList.toggle("is-over-text", onText);
 }
 
 function mergeLineRects(spans, spanIds) {
@@ -1311,10 +1784,12 @@ function annotationSortKey(ann) {
 }
 
 function draftSortKey(draft) {
+  const rects = draftDisplayRects(draft);
+  if (!rects.length) return [draft.pageIndex, 0, 0];
   return [
     draft.pageIndex,
-    Math.min(...draft.rects.map((r) => r[1])),
-    Math.min(...draft.rects.map((r) => r[0])),
+    Math.min(...rects.map((r) => r[1])),
+    Math.min(...rects.map((r) => r[0])),
   ];
 }
 
@@ -1325,13 +1800,10 @@ function compareSortKeys(a, b) {
   return 0;
 }
 
-function rectsOverlap(a, b, tol = 1) {
-  return !(
-    a[2] < b[0] - tol
-    || b[2] < a[0] - tol
-    || a[3] < b[1] - tol
-    || b[3] < a[1] - tol
-  );
+function rectsOverlap(a, b, tol = 0.5) {
+  const width = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const height = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  return width > tol && height > tol;
 }
 
 function autosizeCommentEditorTa() {
@@ -1413,7 +1885,7 @@ function editorValueFor(ann) {
 function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
   if (!commentEditorEl || !commentEditorTa) return;
   if (mode === "draft") syncDraftTextFromEditor();
-  const editorKey = mode === "draft" ? "draft" : String(state.focusId ?? title);
+  const editorKey = mode === "draft" ? draftSelectionKey(state.draft) : String(state.focusId ?? title);
   const same = state.commentEditor?.mode === mode && state.commentEditor?.key === editorKey;
   const keepTyping = same && document.activeElement === commentEditorTa;
   const text = keepTyping
@@ -1484,13 +1956,19 @@ function syncCommentEditor() {
       anchorCard: card,
       title: "New comment",
       meta: `p.${state.draft.pageIndex + 1}`,
-      quote: excerptFor({ page: state.draft.pageIndex, rects: state.draft.rects }),
+      quote: excerptFor({ page: state.draft.pageIndex, rects: draftDisplayRects() }),
       value: state.draft.text ?? "",
       placeholder: "Write your comment…",
-      foot: "Autosaves as you type · Esc saves · Shift+↵ new line",
+      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line",
       onInput: () => {
         syncDraftTextFromEditor();
         autosizeCommentEditorTa();
+        if (!state.draft || state.draft.saving || !draftText()) return;
+        clearTimeout(draftSaveTimer);
+        draftSaveTimer = setTimeout(() => {
+          draftSaveTimer = null;
+          void onDraftEditorInputSave();
+        }, 400);
       },
       onKeydown: onDraftEditorKeydown,
     });
@@ -1514,7 +1992,7 @@ function syncCommentEditor() {
       quote: excerptFor(ann),
       value: editorValueFor(ann),
       placeholder: trimText(ann.content) ? "Comment" : "Empty — Backspace/Delete removes",
-      foot: "Autosaves as you type · Esc saves · Shift+↵ new line",
+      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line",
       onInput: state.pendingNote?.onInput,
       onKeydown: state.pendingNote?.onKeydown,
     });
@@ -1525,23 +2003,53 @@ function syncCommentEditor() {
   closeCommentEditor();
 }
 
-async function onDraftEditorInputSave() {
-  if (!state.draft || state.draft.committed || !commentEditorTa) return;
+async function onDraftEditorInputSave(trigger = "autosave") {
+  if (!state.draft) {
+    devLog("draft save skipped: no draft", { trigger });
+    return false;
+  }
+  if (state.draft.saving) {
+    devLog("draft save skipped: already saving", { trigger });
+    return false;
+  }
+  if (!commentEditorTa) {
+    devWarn("draft save skipped: no comment editor textarea", { trigger });
+    return false;
+  }
   syncDraftTextFromEditor();
-  if (draftText() === "") return;
-  state.draft.committed = true;
-  const { pageIndex: page, spanIds: ids, color, text } = state.draft;
+  const text = draftText();
+  if (text === "") {
+    devLog("draft save skipped: empty text", { trigger });
+    return false;
+  }
+  const rects = draftCommitRects();
+  if (!rects.length) {
+    devWarn("draft save skipped: no commit rects", {
+      trigger,
+      displayRectCount: draftDisplayRects().length,
+      commitRectCount: state.draft.commitRects?.length ?? 0,
+      spanIds: state.draft.spanIds,
+      page: state.draft.pageIndex,
+    });
+    return false;
+  }
+  const { pageIndex: page, spanIds: ids, color } = state.draft;
   const content = text ?? commentEditorTa.value;
+  const payload = { page, span_ids: ids, rects, color, content };
+  devLog("draft save: POST /api/annotations", { trigger, ...payload, contentLength: content.length });
+  state.draft.saving = true;
   try {
     const created = await withSave(() => api("/api/annotations", {
       method: "POST",
-      body: JSON.stringify({ page, span_ids: ids, color, content }),
+      body: JSON.stringify(payload),
     }));
     state.annotations.set(created.id, created);
     if (!state.historyApplying) {
       pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
     }
+    const createdId = created.id;
     state.draft = null;
+    state.lastRenderedDraftKey = null;
     clearPreviewLayers();
     renderAllHighlights();
     await refreshPageBitmap(page);
@@ -1550,37 +2058,44 @@ async function onDraftEditorInputSave() {
     const savePath = created.save_path || state.doc?.save_path;
     if (savePath && state.doc) state.doc.save_path = savePath;
     updateDocMeta();
+    closeCommentEditor();
+    state.focusId = createdId;
+    renderCommentsPane();
+    updateCommentSelectionUi();
+    flashHighlight(createdId);
+    commentsListEl
+      ?.querySelector(`.comment-card[data-id="${createdId}"]`)
+      ?.scrollIntoView({ block: "nearest", behavior: "auto" });
     toast(`Comment saved · ${basename(savePath)}`, 2800);
-    const caret = commentEditorTa.selectionStart;
-    focusAnnotation(created.id, { center: false, edit: true, scrollCard: false, behavior: "auto" });
-    requestAnimationFrame(() => {
-      if (!commentEditorTa) return;
-      commentEditorTa.focus();
-      const end = commentEditorTa.value.length;
-      commentEditorTa.setSelectionRange(Math.min(caret, end), Math.min(caret, end));
-    });
+    devLog("draft save: ok", { trigger, id: createdId, page });
+    return true;
   } catch (err) {
-    state.draft.committed = false;
+    state.draft.saving = false;
     syncDraftTextFromEditor();
     syncCommentEditor();
-    toast(err.message || "Could not save highlight");
+    const msg = err.message || "";
+    devWarn("draft save: failed", { trigger, message: msg, page, span_ids: ids, rects, contentLength: content.length });
+    if (!/overlap/i.test(msg)) toast(msg || "Could not save highlight");
+    return false;
   }
 }
 
 function onDraftEditorKeydown(ev) {
   if (ev.key === "Escape") {
     ev.preventDefault();
-    clearTimeout(draftSaveTimer);
-    draftSaveTimer = null;
-    if (draftText()) void onDraftEditorInputSave();
-    else clearDraft();
+    void settleDraft();
+    return;
+  }
+  if (ev.key === "Enter" && !ev.shiftKey) {
+    ev.preventDefault();
+    void settleDraft();
   }
 }
 
 commentEditorTa?.addEventListener("input", () => {
   if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   autosizeCommentEditorTa();
-  if (!state.draft || state.draft.committed || !draftText()) return;
+  if (!state.draft || state.draft.saving || !draftText()) return;
   clearTimeout(draftSaveTimer);
   draftSaveTimer = setTimeout(() => {
     draftSaveTimer = null;
@@ -1590,6 +2105,13 @@ commentEditorTa?.addEventListener("input", () => {
 
 function focusDraftNote() {
   syncCommentEditor();
+  requestAnimationFrame(() => {
+    const ta = state.draft?.ta ?? commentEditorTa;
+    if (!ta || commentEditorEl?.hidden) return;
+    ta.focus();
+    const end = ta.value.length;
+    ta.setSelectionRange(end, end);
+  });
 }
 
 function sortedAnnotations() {
@@ -2284,11 +2806,11 @@ function wireLinks(meta, links, scale) {
 }
 
 function excerptFor(ann) {
-  const meta = pageMeta(ann.page);
-  if (!meta) return "";
+  const page = ann.page ?? ann.pageIndex;
+  const meta = pageMeta(page);
+  if (!meta || !ann.rects?.length) return "";
   const hits = meta.spans.filter((sp) =>
-    ann.rects.some(([x0, y0, x1, y1]) =>
-      sp.bbox[0] >= x0 - 1 && sp.bbox[2] <= x1 + 1 && sp.bbox[1] >= y0 - 1 && sp.bbox[3] <= y1 + 1));
+    ann.rects.some((rect) => rectsOverlap(sp.bbox, rect)));
   const text = hits.map((h) => h.text).join("");
   if (!text) return "Highlighted text";
   return text.length > 160 ? `${text.slice(0, 160)}…` : text;
@@ -2311,7 +2833,7 @@ function buildDraftCard() {
   quote.className = "comment-quote";
   quote.textContent = excerptFor({
     page: state.draft.pageIndex,
-    rects: state.draft.rects,
+    rects: draftDisplayRects(),
   });
   inner.appendChild(quote);
 
@@ -2442,12 +2964,16 @@ function renderCommentsPane() {
   syncDraftTextFromEditor();
   const keepFocus = state.focusId;
   const draftOpen = state.draft && !state.draft.committed;
-  if (draftOpen && commentsListEl.querySelector(".comment-card.draft")) {
+  const draftKey = draftOpen ? draftSelectionKey(state.draft) : null;
+  const draftCard = commentsListEl.querySelector(".comment-card.draft");
+  if (draftOpen && draftCard && draftKey === state.lastRenderedDraftKey) {
     commentsCountEl.textContent = String(state.annotations.size);
     updateCommentSelectionUi();
-    if (commentEditorEl?.hidden) syncCommentEditor();
+    syncCommentEditor();
     return;
   }
+  if (draftOpen) state.lastRenderedDraftKey = draftKey;
+  else state.lastRenderedDraftKey = null;
   state.pendingNote = null;
   commentsListEl.replaceChildren();
 
@@ -2576,10 +3102,6 @@ function renderHighlights(pageIndex) {
       group.appendChild(el);
     }
     group.addEventListener("contextmenu", (ev) => openCtx(ev, ann));
-    group.addEventListener("mousedown", (ev) => {
-      if (ev.button !== 0) return;
-      startHighlightGesture(ev, ann, meta, pageIndex);
-    }, { capture: true });
     meta.annotLayer.appendChild(group);
   }
 }
@@ -2607,36 +3129,93 @@ async function requestDelete(id, currentText) {
   await deleteAnnotation(id);
 }
 
-function showDraft(pageIndex, spanIds) {
+function showDraft(
+  pageIndex,
+  spanIds,
+  anchorId = null,
+  anchorX = null,
+  anchorY = null,
+  focusId = null,
+  focusX = null,
+  focusY = null,
+) {
   const meta = pageMeta(pageIndex);
   if (!meta) return;
-  const rects = mergeLineRects(meta.spans, spanIds);
-  if (!rects.length) return;
+  const prefer = anchorId ?? spanIds[0];
+  const anchorSpan = meta.spans.find((s) => s.id === prefer);
+  const ax = anchorX ?? anchorSpan?.bbox[0] ?? 0;
+  const ay = anchorY ?? anchorSpan?.bbox[1] ?? 0;
+  const focus = focusId ?? spanIds[spanIds.length - 1];
+  const focusSpan = meta.spans.find((s) => s.id === focus);
+  const fx = focusX ?? focusSpan?.bbox[2] ?? ax;
+  const fy = focusY ?? focusSpan?.bbox[1] ?? ay;
+  const displaySpanIds = [...spanIds];
+  const displayRects = clipSelectionRects(
+    meta, displaySpanIds, prefer, focus, ax, ay, fx, fy,
+  );
+  if (!displayRects.length) {
+    meta.draftLayer?.replaceChildren();
+    return;
+  }
+
+  const commitSpanIds = trimSelectionAtFirstHighlight(
+    meta, pageIndex, spanIds, prefer, focus, ax, ay,
+  );
+  const commitRects = commitSpanIds.length
+    ? selectionRectsForDraft(meta, pageIndex, commitSpanIds, prefer, focus, ax, ay, fx, fy)
+    : [];
+
+  if (!commitRects.length) {
+    devWarn("showDraft: no savable rects", {
+      pageIndex,
+      displayRectCount: displayRects.length,
+      commitSpanCount: commitSpanIds.length,
+      anchorInHighlight: pointInAnnotationRects(pageIndex, ax, ay),
+    });
+    meta.draftLayer?.replaceChildren();
+    if (pointInAnnotationRects(pageIndex, ax, ay)) {
+      const ann = annotationAtPdfPoint(pageIndex, ax, ay);
+      if (ann) focusAnnotation(ann.id, { edit: true, scrollCard: true, behavior: "auto" });
+    }
+    return;
+  }
+
+  devLog("showDraft", {
+    pageIndex,
+    displayRectCount: displayRects.length,
+    commitRectCount: commitRects.length,
+    commitSpanCount: commitSpanIds.length,
+  });
 
   for (const [idx, m] of state.pages) {
     if (Number(idx) !== pageIndex) m.draftLayer?.replaceChildren();
   }
 
-  if (selectionOverlapsOthers(pageIndex, spanIds)) {
-    state.draft = null;
-    state.textSelection = { pageIndex, spanIds };
-    renderDraftOverlay(meta, rects);
-    clearNativeSelection();
-    toast("Overlaps an existing highlight — ⌘C to copy", 3500);
-    return;
-  }
+  clearTimeout(draftSaveTimer);
+  draftSaveTimer = null;
 
   state.textSelection = null;
   state.draft = {
     pageIndex,
-    spanIds,
-    rects,
+    spanIds: commitSpanIds,
+    displaySpanIds,
+    rects: commitRects,
+    commitRects,
+    displayRects,
+    anchorId: prefer,
+    focusId: focus,
+    anchorX: ax,
+    anchorY: ay,
+    focusX: fx,
+    focusY: fy,
     color: state.color,
     committed: false,
+    saving: false,
     createdAt: Date.now(),
     text: "",
   };
-  renderDraftOverlay(meta, rects);
+  state.lastRenderedDraftKey = null;
+  renderDraftOverlay(meta, displayRects);
   clearNativeSelection();
   renderCommentsPane();
   focusDraftNote();
@@ -3071,6 +3650,7 @@ function mountContextMenu(ev, items) {
     ctxMenu.appendChild(btn);
   }
   positionContextMenu(ev.clientX, ev.clientY);
+  suppressCtxClose();
 }
 
 function openCtx(ev, ann) {
@@ -3081,9 +3661,9 @@ function openCtx(ev, ann) {
 }
 
 function openTextSelectionCtx(ev) {
-  if (!currentTextSelection()) return;
   ev.preventDefault();
   ev.stopPropagation();
+  if (!currentTextSelection()) return;
   mountContextMenu(ev, [
     { label: "Copy", action: () => void copySelectedText() },
   ]);
@@ -3169,8 +3749,18 @@ function wireSelection(pageIndex, meta) {
   meta.pageEl.addEventListener("mousedown", (ev) => {
     if (ev.button !== 0) return;
     if (ev.target.closest(".pdf-link")) return;
-    if (ev.target.closest(".highlight-group")) return;
+    const ann = annotationAtClient(pageIndex, ev.clientX, ev.clientY);
     const anchorId = spanIdAtClient(meta, pageIndex, ev.clientX, ev.clientY, { strict: true });
+    if (ann && anchorId != null) {
+      ev.preventDefault();
+      clearNativeSelection();
+      settleDraftSync();
+      void blurComment();
+      state.focusId = null;
+      hideCtx();
+      startHighlightGesture(ev, ann, meta, pageIndex);
+      return;
+    }
     if (anchorId == null) {
       if (editorIsOpen()) {
         ev.preventDefault();
@@ -3181,17 +3771,20 @@ function wireSelection(pageIndex, meta) {
     }
     ev.preventDefault();
     clearNativeSelection();
-    settleDraftSync();
+    prepareDraftForNewSelection();
     clearTextSelection();
     void blurComment();
     state.focusId = null;
     hideCtx();
+    const anchorPt = clientToPdf(meta, pageIndex, ev.clientX, ev.clientY);
     state.selecting = true;
     state.activeSelection = {
       pageIndex,
       meta,
       anchorId,
       focusId: anchorId,
+      anchorX: anchorPt.x,
+      anchorY: anchorPt.y,
       startX: ev.clientX,
       startY: ev.clientY,
     };
@@ -3199,11 +3792,22 @@ function wireSelection(pageIndex, meta) {
     updateSelectionOverlay(state.activeSelection, anchorId);
   }, { capture: true });
 
-  meta.pageEl.addEventListener("contextmenu", (ev) => {
-    if (ev.target.closest(".highlight-group")) return;
-    if (ev.target.closest(".pdf-link")) return;
-    openTextSelectionCtx(ev);
+  meta.pageEl.addEventListener("mousemove", (ev) => {
+    setPageTextHover(meta, pageIndex, ev.clientX, ev.clientY);
   });
+  meta.pageEl.addEventListener("mouseleave", () => {
+    meta.pageEl?.classList.remove("is-over-text");
+  });
+
+  meta.pageEl.addEventListener("contextmenu", (ev) => {
+    if (ev.target.closest(".pdf-link")) return;
+    const ann = annotationAtClient(pageIndex, ev.clientX, ev.clientY);
+    if (ann) {
+      openCtx(ev, ann);
+      return;
+    }
+    openTextSelectionCtx(ev);
+  }, { capture: true });
 }
 
 function bindGlobalSelectionHandlers() {
@@ -3219,7 +3823,7 @@ function bindGlobalSelectionHandlers() {
         gesture.moved = true;
         state.selecting = true;
         setSelectingUi(true, gesture.meta.pageEl);
-        settleDraftSync();
+        prepareDraftForNewSelection();
         void blurComment();
         state.focusId = null;
       }
@@ -3240,9 +3844,13 @@ function bindGlobalSelectionHandlers() {
       ev.clientX,
       ev.clientY,
       sel.anchorId,
+      sel.startY,
     );
     if (focusId == null) return;
-    if (focusId === sel.focusId && sel.meta._dragSpanIds?.length) return;
+    const focusPt = clientToPdf(sel.meta, sel.pageIndex, ev.clientX, ev.clientY);
+    sel.focusId = focusId;
+    sel.focusX = focusPt.x;
+    sel.focusY = focusPt.y;
     updateSelectionOverlay(sel, focusId);
   });
 
@@ -3257,22 +3865,67 @@ function bindGlobalSelectionHandlers() {
     if (!state.selecting || !sel) return;
     state.selecting = false;
     setSelectingUi(false);
-    const spanIds = sel.meta._dragSpanIds
-      || spanIdsInSelectionRect(sel.meta.spans, sel.anchorId, sel.focusId);
+    const focusId = spanIdForDragSelection(
+      sel.meta,
+      sel.pageIndex,
+      ev.clientX,
+      ev.clientY,
+      sel.anchorId,
+      sel.startY,
+    ) ?? sel.focusId ?? sel.anchorId;
+    const ordered = spanRangeOrdered(sel.meta.spans, sel.anchorId, focusId);
     sel.meta._dragSpanIds = null;
     state.activeSelection = null;
     clearNativeSelection();
     const moved = sel.startX != null && sel.startY != null
       && Math.hypot(ev.clientX - sel.startX, ev.clientY - sel.startY) >= DRAG_THRESHOLD;
-    if (!spanIds.length) {
+    if (!ordered.length) {
       sel.meta.draftLayer?.replaceChildren();
       return;
     }
-    if (moved && spanIds.length === 1 && spanIds[0] === sel.anchorId) {
-      sel.meta.draftLayer?.replaceChildren();
-      return;
+    const focusPt = clientToPdf(sel.meta, sel.pageIndex, ev.clientX, ev.clientY);
+    let draftSpanIds = ordered;
+    let draftAnchorId = sel.anchorId;
+    let draftFocusId = focusId;
+    let draftAx = sel.anchorX;
+    let draftAy = sel.anchorY;
+    let draftFx = focusPt.x;
+    let draftFy = focusPt.y;
+
+    const clickSelect = !moved
+      || (ordered.length === 1 && ordered[0] === sel.anchorId
+        && Math.hypot(focusPt.x - sel.anchorX, focusPt.y - sel.anchorY) < 1.5);
+    if (clickSelect) {
+      const ann = annotationAtClient(sel.pageIndex, ev.clientX, ev.clientY);
+      if (ann) {
+        sel.meta.draftLayer?.replaceChildren();
+        settleDraftSync();
+        focusAnnotation(ann.id, { edit: true, scrollCard: true, behavior: "auto" });
+        return;
+      }
+      const sp = sel.meta.spans.find((s) => s.id === sel.anchorId);
+      const word = sp && wordBoundsAtX(sp, sel.anchorX);
+      if (!word) {
+        sel.meta.draftLayer?.replaceChildren();
+        return;
+      }
+      draftSpanIds = [sel.anchorId];
+      draftAnchorId = draftFocusId = sel.anchorId;
+      draftAx = word.x0;
+      draftFx = word.x1;
+      draftAy = draftFy = (word.y0 + word.y1) * 0.5;
     }
-    showDraft(sel.pageIndex, spanIds);
+
+    showDraft(
+      sel.pageIndex,
+      draftSpanIds,
+      draftAnchorId,
+      draftAx,
+      draftAy,
+      draftFocusId,
+      draftFx,
+      draftFy,
+    );
   });
 }
 
@@ -3339,7 +3992,7 @@ function mergeAnnotationsFromServer(list) {
 
 async function pullServerState({ quiet = false } = {}) {
   if (state.savePending > 0) return;
-  if (state.draft && !state.draft.committed) return;
+  if (state.draft) return;
   try {
     const res = await api(`/api/sync?since=${state.serverRevision}`);
     applyServerRevision(res.revision);
@@ -3533,8 +4186,7 @@ function initPageViewport() {
 
 function routeDraftTyping(ev) {
   if (ev.metaKey || ev.ctrlKey || ev.altKey) return false;
-  if (!state.draft || state.draft.committed) return false;
-  if (Date.now() - (state.draft.createdAt ?? 0) < 300) return false;
+  if (!state.draft || state.draft.committed || state.draft.saving) return false;
   const ta = state.draft.ta ?? commentEditorTa;
   if (!ta || document.activeElement === ta) return false;
   if (ev.target.closest("textarea, input, select, [contenteditable]")) return false;
@@ -3573,10 +4225,12 @@ async function init() {
   }
   wireOpenPdf();
   state.doc = await waitForApp();
+  if (state.doc?.dev) devLog("server dev mode enabled");
   setServerRevision(state.doc.revision ?? 0);
   syncDocTitle(state.doc);
   renderUpdateUi({ current: state.doc.app_version, check_ok: false });
   updateBtnEl?.addEventListener("click", () => { void startUpdate(); });
+  appVersionAvailableEl?.addEventListener("click", () => { void startUpdate(); });
   reviewerEl.value = state.doc.reviewer;
   updateDocMeta();
   populateReviewers();

@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "0.1.39"
+PEERFOLD_VERSION = "0.1.40"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
@@ -328,7 +328,10 @@ def main() -> None:
     if dev is not None and os.environ.get("PEERFOLD_VERBOSE") == "1":
         print(f"PeerFold {installed_version(py) or '?'} (editable ← {dev})", flush=True)
 
-    result = subprocess.run([str(peerfold), *args])
+    env = os.environ.copy()
+    if dev is not None:
+        env.setdefault("PEERFOLD_DEV", "1")
+    result = subprocess.run([str(peerfold), *args], env=env)
     raise SystemExit(result.returncode)
 
 

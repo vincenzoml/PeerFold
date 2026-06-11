@@ -103,11 +103,35 @@ body {
 
 .app-version-available {
   flex-shrink: 0;
+  margin: 0;
+  padding: 2px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
   font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
   color: color-mix(in srgb, var(--accent) 82%, var(--text));
   white-space: nowrap;
+  cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.app-version-available.is-notice {
+  border-color: color-mix(in srgb, var(--accent) 28%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.app-version-available:hover,
+.app-version-available:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.app-version-available:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .topbar-sep {
@@ -1234,6 +1258,11 @@ body {
   user-select: none;
 }
 
+.page.is-over-text,
+.page.is-selecting {
+  cursor: text;
+}
+
 .page img {
   display: block;
   width: 100%;
@@ -1254,17 +1283,12 @@ body {
   user-select: none;
   -webkit-user-select: none;
   pointer-events: none;
-  z-index: 1;
-}
-
-.page.is-selecting .text-layer {
-  z-index: 7;
+  z-index: 6;
   cursor: text;
 }
 
 .page.is-selecting .annot-layer,
-.page.is-selecting .link-layer,
-.page.is-selecting .highlight-group .highlight {
+.page.is-selecting .link-layer {
   pointer-events: none !important;
 }
 
@@ -1279,7 +1303,8 @@ body {
   line-height: 1;
   user-select: none;
   -webkit-user-select: none;
-  pointer-events: none;
+  pointer-events: auto;
+  cursor: text;
 }
 
 .text-span::selection {
@@ -1291,7 +1316,7 @@ body {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  z-index: 5;
+  z-index: 7;
 }
 
 .pdf-link {
@@ -1337,7 +1362,7 @@ body {
 }
 
 .highlight-group .highlight {
-  pointer-events: auto;
+  pointer-events: none;
   cursor: pointer;
 }
 

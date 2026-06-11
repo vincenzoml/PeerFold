@@ -261,8 +261,30 @@ async function showWelcomeScreen() {
     void pickAndOpenPdf();
   });
   mountWelcomeRecentList(card, recentFiles);
+  mountWelcomeLinks(card);
   el.append(card);
   pagesEl.appendChild(el);
+}
+
+function mountWelcomeLinks(card) {
+  const site = state.doc?.website;
+  if (!site) return;
+  const foot = document.createElement("p");
+  foot.className = "welcome-links";
+  const link = document.createElement("button");
+  link.type = "button";
+  link.className = "welcome-link";
+  try {
+    link.textContent = new URL(site).host;
+  } catch {
+    link.textContent = "peerfold";
+  }
+  link.title = site;
+  link.addEventListener("click", () => {
+    void openExternalUrl(site);
+  });
+  foot.append(link);
+  card.append(foot);
 }
 
 async function openPdfByPath(path) {

@@ -1,5 +1,7 @@
 # PeerFold
 
+**Website:** [vincenzoml.github.io/PeerFold](https://vincenzoml.github.io/PeerFold/) · **Source:** [github.com/vincenzoml/PeerFold](https://github.com/vincenzoml/PeerFold)
+
 Review PDFs in a native window. Highlights are standard PDF annotations — open the saved copy in any reader.
 
 Saved reviews: `manuscript_VC-2026-06-09.pdf` next to the original.

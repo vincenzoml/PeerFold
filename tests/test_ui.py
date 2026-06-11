@@ -125,8 +125,35 @@ def test_open_recent_spawns_new_window(monkeypatch, tmp_path):
 
 
 def test_show_about_dialog_does_not_raise(monkeypatch):
+    monkeypatch.setattr("peerfold.ui._osascript_about", lambda *args: None)
     monkeypatch.setattr(
         "peerfold.ui.show_native_message",
         lambda title, body: None,
     )
     show_about_dialog()
+
+
+def test_show_about_dialog_includes_links(monkeypatch):
+    from peerfold.links import REPOSITORY, WEBSITE
+
+    captured = []
+    monkeypatch.setattr(
+        "peerfold.ui._osascript_about",
+        lambda version, website, repository: captured.append((version, website, repository)),
+    )
+    monkeypatch.setattr(
+        "peerfold.ui.show_native_message",
+        lambda title, body: captured.append(("message", title, body)),
+    )
+    monkeypatch.setattr("peerfold.ui.sys.platform", "linux")
+
+    show_about_dialog()
+    assert captured
+    if captured[0][0] == "message":
+        body = captured[0][2]
+        assert WEBSITE in body
+        assert REPOSITORY in body
+    else:
+        _version, website, repository = captured[0]
+        assert website == WEBSITE
+        assert repository == REPOSITORY

@@ -1489,7 +1489,24 @@ def app_version() -> str:
 
 
 def app_metadata() -> dict[str, str]:
-    return {"app_version": app_version()}
+    from peerfold.links import REPOSITORY, WEBSITE
+
+    return {
+        "app_version": app_version(),
+        "website": WEBSITE,
+        "repository": REPOSITORY,
+    }
+
+
+def print_launch_banner(*, pdf: Path | None = None, local_url: str | None = None) -> None:
+    from peerfold.links import launch_banner_lines
+
+    for line in launch_banner_lines(
+        version=app_version(),
+        pdf=pdf,
+        local_url=local_url,
+    ):
+        print(line, flush=True)
 
 
 def parse_version_parts(version: str) -> tuple[int, ...]:
@@ -1644,15 +1661,10 @@ def run_server(
     handler.fitz_mod = None
     server = QuietThreadingHTTPServer(("127.0.0.1", chosen), handler)
 
-    if ui == "web" or terminal_verbose():
-        if pdf:
-            print(f"PeerFold · {pdf.name}")
-        else:
-            print("PeerFold")
-        print(f"Open: {url}")
-        print_review_target(session)
-
     if ui == "none":
+        print_launch_banner(pdf=pdf, local_url=url)
+        if terminal_verbose():
+            print_review_target(session)
         session._ready.wait()
         if session.loading_error:
             raise SystemExit(session.loading_error)

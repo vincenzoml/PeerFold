@@ -12,6 +12,7 @@ from peerfold.core import (
     ServerSession,
     farewell_message,
     pick_port,
+    print_launch_banner,
     print_review_target,
     terminal_verbose,
 )
@@ -154,13 +155,10 @@ class AppHost:
         with self._docs_lock:
             self._documents.append(doc)
 
-        if terminal_verbose():
-            if pdf:
-                print(f"PeerFold · {pdf.name}")
-            else:
-                print("PeerFold")
-            print(f"Open: {doc.url}")
-            print_review_target(doc.session)
+        if not self._documents:
+            print_launch_banner(pdf=pdf, local_url=doc.url)
+            if terminal_verbose():
+                print_review_target(doc.session)
 
         if self._started:
             threading.Thread(

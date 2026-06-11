@@ -593,6 +593,27 @@ body {
   text-overflow: ellipsis;
 }
 
+.welcome-links {
+  margin: 1.1rem 0 0;
+  text-align: center;
+}
+
+.welcome-link {
+  border: none;
+  background: transparent;
+  padding: 0.2rem 0.45rem;
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 0.15s, background 0.15s;
+}
+
+.welcome-link:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
 .viewer-error strong {
   display: block;
   margin-bottom: 8px;

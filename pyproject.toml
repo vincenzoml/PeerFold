@@ -38,8 +38,10 @@ peerfold = "peerfold.cli:main"
 
 [project.urls]
 Homepage = "https://vincenzoml.github.io/PeerFold/"
+Documentation = "https://vincenzoml.github.io/PeerFold/"
 Repository = "https://github.com/vincenzoml/PeerFold"
 Issues = "https://github.com/vincenzoml/PeerFold/issues"
+Changelog = "https://github.com/vincenzoml/PeerFold/releases"
 
 [tool.setuptools.dynamic]
 version = { attr = "peerfold.__version__" }

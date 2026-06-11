@@ -129,14 +129,29 @@ def show_native_message(title: str, body: str) -> None:
         win.create_confirmation_dialog(title, body)
 
 
+def _osascript_about(version: str, website: str, repository: str) -> None:
+    title = f"PeerFold {version}"
+    script = (
+        f'set website to "{_escape_applescript_string(website)}"\n'
+        f'set github to "{_escape_applescript_string(repository)}"\n'
+        f'set response to display alert "{_escape_applescript_string(title)}" '
+        f'message "{_escape_applescript_string("PDF review with standard highlight annotations.")}" '
+        'buttons {"Visit website", "View on GitHub", "OK"} default button "OK"\n'
+        "set choice to button returned of response\n"
+        'if choice is "Visit website" then open location website\n'
+        'if choice is "View on GitHub" then open location github'
+    )
+    subprocess.run(["osascript", "-e", script], check=False)
+
+
 def show_about_dialog() -> None:
     from peerfold import __version__
+    from peerfold.links import REPOSITORY, WEBSITE, about_body
 
-    show_native_message(
-        f"PeerFold {__version__}",
-        "PDF review with standard highlight annotations.\n"
-        "https://vincenzoml.github.io/PeerFold/",
-    )
+    if sys.platform == "darwin":
+        _osascript_about(__version__, WEBSITE, REPOSITORY)
+        return
+    show_native_message(f"PeerFold {__version__}", about_body(version=__version__))
 
 
 def show_update_check_dialog(info: dict[str, Any]) -> None:
@@ -531,7 +546,10 @@ def open_webview_strict(url: str, title: str) -> None:
 
 def launch_web_ui(url: str) -> None:
     """Serve via the system browser, with SSH-friendly instructions when needed."""
-    print(f"\n  {url}\n")
+    from peerfold.core import print_launch_banner
+
+    print_launch_banner(local_url=url)
+    print()
     if ssh_session():
         parsed = urlparse(url)
         port = parsed.port or 80

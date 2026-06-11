@@ -113,6 +113,30 @@ def release_ports(*ports: int) -> None:
         )
 
 
+def drag_text_selection(page) -> None:
+    layer = page.locator(".page-layer").first
+    layer.wait_for(state="visible", timeout=8000)
+    box = layer.bounding_box()
+    if not box:
+        raise SystemExit("Could not measure PDF page for selection screenshot")
+    start_x = box["x"] + box["width"] * 0.28
+    start_y = box["y"] + box["height"] * 0.34
+    end_x = box["x"] + box["width"] * 0.62
+    end_y = start_y
+    page.mouse.move(start_x, start_y)
+    page.mouse.down()
+    page.mouse.move(end_x, end_y, steps=12)
+    page.mouse.up()
+    page.wait_for_function(
+        """() => {
+          const layer = document.querySelector('.draft-layer');
+          return layer && layer.children.length > 0;
+        }""",
+        timeout=8000,
+    )
+    page.wait_for_timeout(300)
+
+
 def capture_all() -> None:
     release_ports(PORT, PORT + 1)
     patch_recent_store()
@@ -137,8 +161,6 @@ def capture_all() -> None:
         page.wait_for_selector(".comment-card", timeout=15000)
         page.wait_for_timeout(600)
 
-        write_png(SHOTS / "02-workspace.png", page.screenshot(type="png"))
-
         page.locator(".comment-card .comment-edit-hit").first.click(timeout=8000)
         page.wait_for_function(
             "() => !document.getElementById('comment-editor')?.hidden",
@@ -146,7 +168,7 @@ def capture_all() -> None:
         )
         page.wait_for_selector("#comment-editor-ta", timeout=8000)
         page.wait_for_timeout(500)
-        write_png(SHOTS / "03-editor.png", page.screenshot(type="png"))
+        write_png(SHOTS / "02-editor.png", page.screenshot(type="png"))
 
         page.keyboard.press("Escape")
         page.wait_for_function(
@@ -154,18 +176,36 @@ def capture_all() -> None:
             timeout=8000,
         )
         page.wait_for_timeout(400)
-        page.locator("#workspace").click(position={"x": 520, "y": 420}, force=True)
-        page.wait_for_timeout(500)
-        write_png(SHOTS / "04-annotations.png", page.screenshot(type="png"))
 
-        page.locator("#comments-pane").evaluate("el => { el.scrollTop = 0; }")
+        drag_text_selection(page)
+        page.locator("#palette .swatch").nth(2).click(timeout=8000)
+        page.wait_for_timeout(400)
+        write_png(SHOTS / "03-color.png", page.screenshot(type="png"))
+
+        page.keyboard.press("Escape")
         page.wait_for_timeout(300)
-        write_png(SHOTS / "05-comments.png", page.screenshot(type="png"))
+        reviewer = page.locator("#reviewer")
+        reviewer.click(timeout=8000)
+        reviewer.fill("VC")
+        reviewer.focus()
+        page.wait_for_timeout(400)
+        write_png(
+            SHOTS / "04-reviewer.png",
+            page.screenshot(type="png", clip={"x": 0, "y": 0, "width": 1440, "height": 240}),
+        )
 
         browser.close()
         stop_server(review_proc)
 
-    write_png(HERO, (SHOTS / "02-workspace.png").read_bytes())
+    write_png(HERO, (SHOTS / "02-editor.png").read_bytes())
+
+    for obsolete in (
+        "02-workspace.png",
+        "03-editor.png",
+        "04-annotations.png",
+        "05-comments.png",
+    ):
+        (SHOTS / obsolete).unlink(missing_ok=True)
 
     for sidecar in DEMO.parent.glob(f"{DEMO.stem}_*-*.pdf"):
         sidecar.unlink(missing_ok=True)

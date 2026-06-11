@@ -113,14 +113,27 @@
     }
     .gallery-grid {
       display: grid;
-      grid-template-columns: repeat(5, 1fr);
-      gap: 10px;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
     }
     @media (max-width: 900px) {
-      .gallery-grid { grid-template-columns: repeat(3, 1fr); }
+      .gallery-grid { grid-template-columns: repeat(2, 1fr); }
     }
     @media (max-width: 520px) {
-      .gallery-grid { grid-template-columns: repeat(2, 1fr); }
+      .gallery-grid { grid-template-columns: 1fr; }
+    }
+    .gallery-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin: 0;
+    }
+    .gallery-caption {
+      font-size: 12px;
+      line-height: 1.4;
+      color: var(--soft);
+      text-align: center;
+      letter-spacing: -0.01em;
     }
     .gallery-thumb {
       display: block;
@@ -359,21 +372,30 @@
 
     <section class="shell gallery" aria-label="Screenshots">
       <div class="gallery-grid">
-        <button type="button" class="gallery-thumb" data-shot="0" aria-label="Open welcome screen">
-          <img src="shots/01-welcome.png" width="288" height="180" alt="Welcome screen with recent files" loading="lazy">
-        </button>
-        <button type="button" class="gallery-thumb" data-shot="1" aria-label="Open review workspace">
-          <img src="shots/02-workspace.png" width="288" height="180" alt="PDF review workspace" loading="lazy">
-        </button>
-        <button type="button" class="gallery-thumb" data-shot="2" aria-label="Open comment editor">
-          <img src="shots/03-editor.png" width="288" height="180" alt="Comment editor with color palette" loading="lazy">
-        </button>
-        <button type="button" class="gallery-thumb" data-shot="3" aria-label="Open annotations view">
-          <img src="shots/04-annotations.png" width="288" height="180" alt="Highlighted PDF annotations" loading="lazy">
-        </button>
-        <button type="button" class="gallery-thumb" data-shot="4" aria-label="Open comments list">
-          <img src="shots/05-comments.png" width="288" height="180" alt="Comments sidebar" loading="lazy">
-        </button>
+        <figure class="gallery-item">
+          <button type="button" class="gallery-thumb" data-shot="0" aria-label="Open welcome screen">
+            <img src="shots/01-welcome.png" width="288" height="180" alt="Welcome screen with recent files" loading="lazy">
+          </button>
+          <figcaption class="gallery-caption">Recent files — catch up where you left off.</figcaption>
+        </figure>
+        <figure class="gallery-item">
+          <button type="button" class="gallery-thumb" data-shot="1" aria-label="Open comment editor">
+            <img src="shots/02-editor.png" width="288" height="180" alt="Comment editor" loading="lazy">
+          </button>
+          <figcaption class="gallery-caption">Click to edit a comment.</figcaption>
+        </figure>
+        <figure class="gallery-item">
+          <button type="button" class="gallery-thumb" data-shot="2" aria-label="Open colour picker">
+            <img src="shots/03-color.png" width="288" height="180" alt="Text selection and highlight colour" loading="lazy">
+          </button>
+          <figcaption class="gallery-caption">Select text, pick a colour.</figcaption>
+        </figure>
+        <figure class="gallery-item">
+          <button type="button" class="gallery-thumb" data-shot="3" aria-label="Open reviewer field">
+            <img src="shots/04-reviewer.png" width="288" height="180" alt="Reviewer name field" loading="lazy">
+          </button>
+          <figcaption class="gallery-caption">Set your reviewer name.</figcaption>
+        </figure>
       </div>
     </section>
 
@@ -422,11 +444,10 @@
 
   <script>
     const shots = [
-      { src: "shots/01-welcome.png", alt: "Welcome screen with recent files", caption: "Open recent papers or drop a PDF." },
-      { src: "shots/02-workspace.png", alt: "PDF review workspace", caption: "Read, highlight, and comment in one window." },
-      { src: "shots/03-editor.png", alt: "Comment editor with color palette", caption: "Pick a color and write your note." },
-      { src: "shots/04-annotations.png", alt: "Highlighted PDF annotations", caption: "Standard PDF highlights on the page." },
-      { src: "shots/05-comments.png", alt: "Comments sidebar", caption: "All comments in one list." },
+      { src: "shots/01-welcome.png", alt: "Welcome screen with recent files", caption: "Recent files — catch up where you left off." },
+      { src: "shots/02-editor.png", alt: "Comment editor", caption: "Click to edit a comment." },
+      { src: "shots/03-color.png", alt: "Text selection and highlight colour", caption: "Select text, pick a colour." },
+      { src: "shots/04-reviewer.png", alt: "Reviewer name field", caption: "Set your reviewer name." },
     ];
 
     const portal = document.getElementById("portal");

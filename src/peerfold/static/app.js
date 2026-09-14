@@ -952,28 +952,34 @@ document.addEventListener("mousedown", (e) => {
   if (e.target.closest(".comment-card:not(.draft)")) return;
   if (e.target.closest(".pdf-link")) return;
 
-  const pageEl = e.target.closest(".page");
-  if (pageEl) {
-    const pageIndex = Number(pageEl.dataset.page);
-    const meta = pageMeta(pageIndex);
-    if (meta) {
-      const onText = spanIdAtClient(meta, pageIndex, e.clientX, e.clientY, { strict: true }) != null;
-      if (!onText && editorIsOpen()) {
-        e.preventDefault();
-        void dismissEditorFromViewerBackground();
-      }
+  if (!editorIsOpen()) {
+    if (state.pendingNote) {
+      dismissComment().catch((err) => toast(err.message || "Could not save comment"));
     }
     return;
   }
 
-  if (e.target.closest("#viewer") && editorIsOpen() && !e.target.closest(".page")) {
-    void dismissEditorFromViewerBackground();
+  const pageEl = e.target.closest(".page");
+  if (pageEl) {
+    const pageIndex = Number(pageEl.dataset.page);
+    const meta = pageMeta(pageIndex);
+    const onText = meta
+      ? spanIdAtClient(meta, pageIndex, e.clientX, e.clientY, { strict: true }) != null
+      : false;
+    if (!onText) {
+      e.preventDefault();
+      void dismissEditorFromViewerBackground();
+      return;
+    }
+    // Clicking live text starts a new selection; an open draft is handed over to
+    // prepareDraftForNewSelection, but a comment being edited must still close.
+    if (!(state.draft && !state.draft.committed)) {
+      void dismissEditorFromViewerBackground();
+    }
     return;
   }
 
-  if (state.pendingNote) {
-    dismissComment().catch((err) => toast(err.message || "Could not save comment"));
-  }
+  void dismissEditorFromViewerBackground();
 });
 
 function syncDocTitle(doc = state.doc) {
@@ -2267,6 +2273,13 @@ async function onDraftEditorInputSave(trigger = "autosave") {
     const savePath = created.save_path || state.doc?.save_path;
     if (savePath && state.doc) state.doc.save_path = savePath;
     updateDocMeta();
+    const typedAhead = commentEditorTa && commentEditorTa.value !== content
+      ? commentEditorTa.value
+      : null;
+    if (typedAhead !== null) {
+      created.content = typedAhead;
+      state.annotations.set(createdId, created);
+    }
     closeCommentEditor();
     state.focusId = createdId;
     renderCommentsPane();
@@ -2277,6 +2290,10 @@ async function onDraftEditorInputSave(trigger = "autosave") {
       ?.scrollIntoView({ block: "nearest", behavior: "auto" });
     toast(`Comment saved · ${basename(savePath)}`, 2800);
     devLog("draft save: ok", { trigger, id: createdId, page });
+    if (typedAhead !== null) {
+      devLog("draft save: flushing keystrokes typed during save", { id: createdId });
+      void patchAnnotation(createdId, { content: typedAhead }, { quiet: true });
+    }
     return true;
   } catch (err) {
     state.draft.saving = false;

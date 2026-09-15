@@ -40,6 +40,13 @@ curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfo
 ./peerfold.py your-paper.pdf --reviewer AB
 ```
 
+**Windows** (PowerShell):
+
+```powershell
+irm https://vincenzoml.github.io/PeerFold/peerfold.py -OutFile peerfold.py
+py .\peerfold.py your-paper.pdf --reviewer AB
+```
+
 **Or download** [peerfold.py](https://vincenzoml.github.io/PeerFold/peerfold.py) into your project root. Packages are cached in `~/.local/share/peerfold/cache` (uv; override with `PEERFOLD_CACHE` / `PEERFOLD_DATA`).
 
 Upgrade when needed:

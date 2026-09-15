@@ -359,14 +359,25 @@
     </section>
 
     <section class="shell folder">
-      <h2>Drop one file into your paper folder</h2>
-      <p class="lead">Co-authors run it from the repo. No install step.</p>
-      <div class="folder-cmd">
-        <button type="button" class="copy-cmd" data-copy="curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py">
-          <code>curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py</code>
-          <span class="copy-label" aria-live="polite"></span>
-        </button>
-        <p class="folder-run">./peerfold.py draft.pdf</p>
+      <h2>Add one file to your paper repo</h2>
+      <p class="lead">Copy <code>peerfold.py</code> into the repo and commit it. Each co-author gets the same pinned version.</p>
+      <div class="install-grid">
+        <article class="install-card">
+          <h3>macOS or Linux</h3>
+          <button type="button" class="copy-cmd" data-copy="curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py">
+            <code>curl -fsSLO https://vincenzoml.github.io/PeerFold/peerfold.py && chmod +x peerfold.py</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
+          <p class="folder-run">./peerfold.py draft.pdf</p>
+        </article>
+        <article class="install-card">
+          <h3>Windows (PowerShell)</h3>
+          <button type="button" class="copy-cmd" data-copy="irm https://vincenzoml.github.io/PeerFold/peerfold.py -OutFile peerfold.py">
+            <code>irm https://vincenzoml.github.io/PeerFold/peerfold.py -OutFile peerfold.py</code>
+            <span class="copy-label" aria-live="polite"></span>
+          </button>
+          <p class="folder-run">py .\peerfold.py draft.pdf</p>
+        </article>
       </div>
     </section>
 

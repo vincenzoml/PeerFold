@@ -1953,6 +1953,13 @@ function autosizeCommentEditorTa() {
   commentEditorTa.style.height = "auto";
   const next = Math.min(320, Math.max(168, commentEditorTa.scrollHeight));
   commentEditorTa.style.height = `${next}px`;
+  if (commentEditorEl && !commentEditorEl.hidden) {
+    positionCommentEditor(state.commentEditor?.anchorCard);
+  }
+}
+
+function returnToReading() {
+  requestAnimationFrame(() => viewerEl?.focus({ preventScroll: true }));
 }
 
 function positionCommentEditor(anchorCard) {
@@ -2166,7 +2173,7 @@ function syncCommentEditor() {
       quote: excerptFor({ page: state.draft.pageIndex, rects: draftDisplayRects() }),
       value: state.draft.text ?? "",
       placeholder: "Write your comment…",
-      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line",
+      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line · ⌘/Ctrl+↵ returns to PDF",
       onInput: () => {
         syncDraftTextFromEditor();
         autosizeCommentEditorTa();
@@ -2207,7 +2214,7 @@ function syncCommentEditor() {
       quote: excerptFor(ann),
       value: editorValueFor(ann),
       placeholder: trimText(ann.content) ? "Comment" : "Empty comment",
-      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line",
+      foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line · ⌘/Ctrl+↵ returns to PDF",
       onInput: state.pendingNote?.onInput,
       onKeydown: state.pendingNote?.onKeydown,
     });
@@ -2307,6 +2314,11 @@ async function onDraftEditorInputSave(trigger = "autosave") {
 }
 
 function onDraftEditorKeydown(ev) {
+  if (ev.key === "Enter" && isModKey(ev)) {
+    ev.preventDefault();
+    void settleDraft("shortcut").finally(returnToReading);
+    return;
+  }
   if (ev.key === "Escape") {
     ev.preventDefault();
     void settleDraft();
@@ -3585,6 +3597,13 @@ function wireNoteEditing(ann, cardEl) {
   };
 
   const onKeydown = (ev) => {
+    if (ev.key === "Enter" && isModKey(ev)) {
+      ev.preventDefault();
+      flush().finally(() => {
+        blurComment().finally(returnToReading);
+      });
+      return;
+    }
     if (ev.key === "Escape") {
       ev.preventDefault();
       flush().finally(() => blurComment());

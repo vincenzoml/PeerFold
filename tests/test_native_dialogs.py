@@ -16,6 +16,7 @@ def test_save_text_file_on_main_thread_uses_macos_panel(monkeypatch):
             return "/tmp/out.md"
 
     monkeypatch.setattr(native_dialogs, "_macos_save_panel", fake_panel)
+    monkeypatch.setattr(native_dialogs.sys, "platform", "darwin")
     native_dialogs.save_text_file(Window(), "paper-comments.md", "# hi", "markdown")
     assert calls["panel"] == 1
     assert calls["dialog"] == 0
@@ -36,6 +37,7 @@ def test_save_text_file_on_worker_thread_uses_pywebview(monkeypatch, tmp_path):
             return str(target)
 
     monkeypatch.setattr(native_dialogs, "_macos_save_panel", fake_panel)
+    monkeypatch.setattr(native_dialogs.sys, "platform", "darwin")
 
     def worker() -> dict:
         return native_dialogs.save_text_file(Window(), "paper-comments.txt", "hello", "text")

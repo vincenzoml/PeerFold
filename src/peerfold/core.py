@@ -437,7 +437,7 @@ class PdfSession:
         self._file_mtime = self._disk_mtime()
         self._citation_entries: list[tuple[int, int, float]] = []
         self._citation_urls: dict[int, str] = {}
-        self._cleanup_empty_highlights()
+        self._maintain_highlights()
         if defer_maintenance:
             threading.Thread(
                 target=self._deferred_citation_index,
@@ -458,6 +458,30 @@ class PdfSession:
     def _page_size(self, page) -> tuple[float, float]:
         rect = page.rect
         return rect.width, rect.height
+
+    def _ensure_popup(self, page, annot) -> bool:
+        """Attach a standards-compliant popup so PDF viewers can open the note."""
+        if annot.has_popup or not (annot.info.get("content") or "").strip():
+            return False
+
+        page_rect = page.rect
+        anchor = annot.rect
+        margin = 12.0
+        width = min(260.0, max(1.0, page_rect.width - 2 * margin))
+        height = min(180.0, max(1.0, page_rect.height - 2 * margin))
+
+        right_x = anchor.x1 + margin
+        left_x = anchor.x0 - margin - width
+        if right_x + width <= page_rect.x1 - margin:
+            x0 = right_x
+        elif left_x >= page_rect.x0 + margin:
+            x0 = left_x
+        else:
+            x0 = min(max(anchor.x0, page_rect.x0 + margin), page_rect.x1 - margin - width)
+        y0 = min(max(anchor.y0, page_rect.y0 + margin), page_rect.y1 - margin - height)
+
+        annot.set_popup(self.fitz.Rect(x0, y0, x0 + width, y0 + height))
+        return True
 
     def _disk_mtime(self, path: Path | None = None) -> float:
         target = path or self.save_path
@@ -526,6 +550,7 @@ class PdfSession:
             annot.set_colors(stroke=color)
             annot.set_info(title=da.get("title") or self.reviewer, content=da.get("content") or "")
             annot.set_opacity(0.45)
+            self._ensure_popup(page, annot)
             annot.update()
             local_fps.add(fp)
             added += 1
@@ -537,7 +562,7 @@ class PdfSession:
         self.doc = self.fitz.open(str(path))
         self.save_path = path
         self._rebuild_citation_index()
-        self._cleanup_empty_highlights()
+        self._maintain_highlights()
         self._note_mtime()
         self.unsaved = False
         self._bump_revision()
@@ -635,12 +660,12 @@ class PdfSession:
         self.doc = self.fitz.open(str(path))
         self.save_path = save_path or path
         self._rebuild_citation_index()
-        self._cleanup_empty_highlights()
+        self._maintain_highlights()
         self.unsaved = False
         self._note_mtime()
         self._bump_revision()
 
-    def _cleanup_empty_highlights(self) -> None:
+    def _maintain_highlights(self) -> None:
         changed = False
         with self.lock:
             for pno in range(self.doc.page_count):
@@ -649,6 +674,7 @@ class PdfSession:
                     if annot.type[0] != self.fitz.PDF_ANNOT_HIGHLIGHT:
                         continue
                     if (annot.info.get("content") or "").strip():
+                        changed = self._ensure_popup(page, annot) or changed
                         continue
                     page.delete_annot(annot)
                     changed = True
@@ -892,6 +918,7 @@ class PdfSession:
             annot.set_colors(stroke=color)
             annot.set_info(title=self.reviewer, content=content)
             annot.set_opacity(0.45)
+            self._ensure_popup(page, annot)
             annot.update()
             self._persist()
             payload = self._annot_response(self._annot_dict(page_index, annot, color_name, rects=span_rects))
@@ -948,6 +975,7 @@ class PdfSession:
             if content is not None:
                 info = annot.info
                 annot.set_info(title=info.get("title") or self.reviewer, content=content)
+                self._ensure_popup(page, annot)
             if color_name is not None:
                 name, rgb = resolve_color(color_name)
                 annot.set_colors(stroke=rgb)
@@ -995,6 +1023,7 @@ class PdfSession:
         new_annot.set_colors(stroke=rgb)
         new_annot.set_info(title=title, content=content)
         new_annot.set_opacity(0.45)
+        self._ensure_popup(page, new_annot)
         new_annot.update()
         fp = annot_fingerprint({"page": pno, "rects": span_rects, "content": content})
         self._persist()
@@ -1062,6 +1091,7 @@ class PdfSession:
         annot.set_colors(stroke=color)
         annot.set_info(title=title, content=content)
         annot.set_opacity(0.45)
+        self._ensure_popup(page, annot)
         annot.update()
         return self._annot_dict(page_index, annot, color_name, rects=rects)
 

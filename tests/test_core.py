@@ -221,6 +221,57 @@ def test_export_comments_payload(tmp_path):
         session.close()
 
 
+def test_created_highlight_has_linked_popup(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    fitz = import_fitz()
+    pdf = tmp_path / "popup.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "popup target")
+    doc.save(pdf)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    try:
+        span_id = next(s["id"] for s in session.page_spans(0) if s["text"] == "popup")
+        created = session.create_highlight(0, [span_id], "yellow", "Clickable note")
+        page = session.doc.load_page(0)
+        annot = next(a for a in page.annots() if a.xref == created["id"])
+        assert annot.has_popup
+        assert annot.popup_xref > 0
+        assert page.rect.contains(annot.popup_rect)
+        assert session.doc.xref_get_key(annot.xref, "Popup")[0] == "xref"
+        assert session.doc.xref_get_key(annot.popup_xref, "Parent")[0] == "xref"
+    finally:
+        session.close()
+
+
+def test_existing_highlight_gets_popup_on_open(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    fitz = import_fitz()
+    pdf = tmp_path / "legacy-popup.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    page.insert_text((72, 72), "legacy target")
+    annot = page.add_highlight_annot(page.search_for("legacy"))
+    annot.set_info(title="VC", content="Legacy note")
+    annot.update()
+    assert not annot.has_popup
+    doc.save(pdf)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    session.close()
+
+    doc = fitz.open(pdf)
+    try:
+        annot = next(a for a in doc[0].annots() if a.type[0] == fitz.PDF_ANNOT_HIGHLIGHT)
+        assert annot.has_popup
+        assert annot.popup_xref > 0
+    finally:
+        doc.close()
+
+
 def test_rects_overlap_corner_touch_is_not_overlap():
     new_rect = [270.2026110197368, 167.78248596191406, 304.9469299316406, 182.896484375]
     existing = [304.9469299316406, 151.8187255859375, 411.3168640136719, 166.9327392578125]

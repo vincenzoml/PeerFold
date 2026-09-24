@@ -120,7 +120,7 @@ def test_venv_dir_versioned(monkeypatch):
     monkeypatch.delenv("PEERFOLD_VENV", raising=False)
     monkeypatch.delenv("PEERFOLD_LOCAL", raising=False)
     monkeypatch.setattr(mod, "local_peerfold_repo", lambda: None)
-    assert mod.venv_dir() == mod.user_data_dir() / "venvs" / mod.PEERFOLD_VERSION
+    assert mod.venv_dir() == mod.user_data_dir() / "venvs" / f"{mod.PEERFOLD_VERSION}-py{mod.PYTHON_VERSION}"
 
 
 def test_venv_dir_accepts_pin(monkeypatch):
@@ -128,7 +128,7 @@ def test_venv_dir_accepts_pin(monkeypatch):
     monkeypatch.delenv("PEERFOLD_VENV", raising=False)
     monkeypatch.delenv("PEERFOLD_LOCAL", raising=False)
     monkeypatch.setattr(mod, "local_peerfold_repo", lambda: None)
-    assert mod.venv_dir(pin="0.1.44") == mod.user_data_dir() / "venvs" / "0.1.44"
+    assert mod.venv_dir(pin="0.1.44") == mod.user_data_dir() / "venvs" / f"0.1.44-py{mod.PYTHON_VERSION}"
 
 
 def test_uv_cache_dir_default(monkeypatch):
@@ -137,3 +137,33 @@ def test_uv_cache_dir_default(monkeypatch):
     monkeypatch.delenv("PEERFOLD_DATA", raising=False)
     assert mod.uv_cache_dir() == mod.user_data_dir() / "cache"
 
+
+def test_venv_is_built_on_the_pinned_interpreter(tmp_path, monkeypatch):
+    """uv must be told which interpreter to use, never left to find one.
+
+    Its discovery order puts a free-threaded build first when the machine has
+    one, and PyMuPDF cannot be built against a free-threaded interpreter, so a
+    venv created without --python is the one failure mode that stops PeerFold
+    from installing at all.
+    """
+    mod = load_launcher()
+    py = tmp_path / "venv" / "bin" / "python"
+    monkeypatch.setattr(mod, "ensure_uv", lambda: tmp_path / "uv")
+    monkeypatch.setattr(mod, "venv_dir", lambda *, pin=None: tmp_path / "venv")
+    monkeypatch.setattr(
+        mod, "venv_paths", lambda *, pin=None: (py, py.parent / "peerfold")
+    )
+    commands = []
+
+    def fake_run(cmd, **kwargs):
+        commands.append(cmd)
+        py.parent.mkdir(parents=True, exist_ok=True)
+        py.write_text("", encoding="utf-8")
+
+    monkeypatch.setattr(mod, "_run", fake_run)
+
+    assert mod.ensure_venv_python() == py
+    cmd = commands[0]
+    assert "--python" in cmd, f"uv was left to choose an interpreter: {cmd}"
+    assert cmd[cmd.index("--python") + 1] == mod.PYTHON_VERSION
+    assert not mod.PYTHON_VERSION.endswith("t"), "that requests a free-threaded build"

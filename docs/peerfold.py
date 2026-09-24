@@ -29,6 +29,15 @@ from urllib.request import Request, urlopen
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
 PEERFOLD_VERSION = "1.0.1"
+# The interpreter the venv is built on. It is named rather than left to uv,
+# which otherwise takes the first interpreter it discovers -- and on a machine
+# with a free-threaded build installed that is usually the one, even when the
+# request is a bare version number. PyMuPDF cannot be built there: its wheel
+# targets the limited API, and py_limited_api=True together with
+# Py_GIL_DISABLED=1 is rejected, so the install dies inside a build log. uv
+# fetches a managed build when the machine has none. The venv directory carries
+# this version, so raising it makes a fresh venv instead of reusing the old one.
+PYTHON_VERSION = "3.13"
 PYPI_JSON = f"https://pypi.org/pypi/{PACKAGE}/json"
 
 
@@ -61,7 +70,7 @@ def venv_dir(*, pin: str | None = None) -> Path:
     if local_peerfold_repo() is not None:
         return user_data_dir() / "venvs" / "dev"
     version = pin or PEERFOLD_VERSION
-    return user_data_dir() / "venvs" / version
+    return user_data_dir() / "venvs" / f"{version}-py{PYTHON_VERSION}"
 
 
 def _win32() -> bool:
@@ -100,7 +109,14 @@ def _run(
     kwargs: dict = {"check": True, "env": env or os.environ.copy()}
     if quiet:
         kwargs.update({"capture_output": True, "text": True})
-    subprocess.run(cmd, **kwargs)
+    try:
+        subprocess.run(cmd, **kwargs)
+    except subprocess.CalledProcessError as exc:
+        if quiet:
+            detail = (exc.stderr or exc.stdout or "").strip()
+            if detail:
+                raise SystemExit(f"{progress or 'PeerFold setup failed'}\n{detail}") from None
+        raise
 
 
 def ensure_uv() -> Path:
@@ -151,7 +167,7 @@ def ensure_venv_python(*, pin: str | None = None) -> Path:
     venv.parent.mkdir(parents=True, exist_ok=True)
     uv = ensure_uv()
     _run(
-        [str(uv), "venv", str(venv)],
+        [str(uv), "venv", "--python", PYTHON_VERSION, str(venv)],
         env=uv_env(),
         progress="Preparing PeerFold environment…",
     )

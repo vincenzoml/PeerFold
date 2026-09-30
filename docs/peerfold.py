@@ -28,7 +28,7 @@ from urllib.request import Request, urlopen
 
 ROOT = Path(__file__).resolve().parent
 PACKAGE = "peerfold-review"
-PEERFOLD_VERSION = "1.0.1"
+PEERFOLD_VERSION = "1.0.2"
 # The interpreter the venv is built on. It is named rather than left to uv,
 # which otherwise takes the first interpreter it discovers -- and on a machine
 # with a free-threaded build installed that is usually the one, even when the

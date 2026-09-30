@@ -148,6 +148,20 @@ body {
   text-overflow: ellipsis;
 }
 
+.reveal-file-btn {
+  min-width: 24px;
+  width: 24px;
+  height: 24px;
+  padding: 3px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+
+.reveal-file-btn:hover,
+.reveal-file-btn:focus-visible {
+  color: var(--accent);
+}
+
 .doc-meta {
   font-size: 11px;
   min-width: 0;

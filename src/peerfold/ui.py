@@ -341,6 +341,9 @@ class PeerFoldApi:
     def open_url(self, url: str) -> None:
         open_url(url)
 
+    def reveal_file(self, path: str) -> None:
+        reveal_in_file_manager(path)
+
     def install_update(self) -> dict[str, Any]:
         from peerfold.updater import install_latest_update, relaunch_after_update
 
@@ -708,3 +711,21 @@ def open_url(url: str) -> None:
     import webbrowser
 
     webbrowser.open(url)
+
+
+def reveal_in_file_manager(path: str) -> None:
+    """Reveal an existing PDF in the platform file manager."""
+    target = Path(path).expanduser().resolve()
+    if not target.is_file():
+        raise ValueError("PDF file no longer exists")
+    kwargs = {
+        "stdout": subprocess.DEVNULL,
+        "stderr": subprocess.DEVNULL,
+        "start_new_session": True,
+    }
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(target)], **kwargs)
+    elif sys.platform == "win32":
+        subprocess.Popen(["explorer", f"/select,{target}"], **kwargs)
+    else:
+        subprocess.Popen(["xdg-open", str(target.parent)], **kwargs)

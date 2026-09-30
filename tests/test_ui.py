@@ -6,6 +6,7 @@ from peerfold.ui import (
     _set_macos_dock_name,
     build_application_menu,
     headless_environment,
+    reveal_in_file_manager,
     run_on_main_thread,
     show_about_dialog,
     show_update_check_dialog,
@@ -193,3 +194,15 @@ def test_show_about_dialog_includes_links(monkeypatch):
         _version, website, repository = captured[0]
         assert website == WEBSITE
         assert repository == REPOSITORY
+
+
+def test_reveal_in_file_manager_reveals_file_on_macos(monkeypatch, tmp_path):
+    pdf = tmp_path / "sample.pdf"
+    pdf.write_bytes(b"%PDF-1.4\n")
+    launched = []
+    monkeypatch.setattr("peerfold.ui.sys.platform", "darwin")
+    monkeypatch.setattr("peerfold.ui.subprocess.Popen", lambda args, **_kwargs: launched.append(args))
+
+    reveal_in_file_manager(str(pdf))
+
+    assert launched == [["open", "-R", str(pdf.resolve())]]

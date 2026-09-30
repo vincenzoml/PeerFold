@@ -128,6 +128,7 @@ const appVersionCurrentEl = $("#app-version-current");
 const appVersionAvailableEl = $("#app-version-available");
 const docTitleEl = $("#doc-title");
 const docSepEl = $("#doc-sep");
+const revealFileBtnEl = $("#reveal-file-btn");
 const docMetaEl = $("#doc-meta");
 const updateBtnEl = $("#update-btn");
 const newWindowBtnEl = $("#new-window-btn");
@@ -466,6 +467,19 @@ async function pickAndOpenPdf() {
     }
   }
   openPdfInputEl?.click();
+}
+
+async function revealCurrentFile() {
+  const path = state.doc?.source || state.doc?.save_path;
+  if (!path || !window.pywebview?.api?.reveal_file) {
+    toast("Opening the file manager requires the desktop app");
+    return;
+  }
+  try {
+    await window.pywebview.api.reveal_file(path);
+  } catch (err) {
+    toast(err.message || "Could not reveal the PDF in the file manager");
+  }
 }
 
 async function applyOpenDocument(doc) {
@@ -987,6 +1001,7 @@ function syncDocTitle(doc = state.doc) {
   if (!doc?.open) {
     docTitleEl.hidden = true;
     docSepEl.hidden = true;
+    if (revealFileBtnEl) revealFileBtnEl.hidden = true;
     docTitleEl.textContent = "";
     docTitleEl.title = "";
     return;
@@ -996,6 +1011,9 @@ function syncDocTitle(doc = state.doc) {
   docTitleEl.title = doc.source || doc.save_path || name;
   docTitleEl.hidden = false;
   docSepEl.hidden = false;
+  if (revealFileBtnEl) {
+    revealFileBtnEl.hidden = !doc.source || !window.pywebview?.api?.reveal_file;
+  }
 }
 
 function updateDocMeta() {
@@ -4622,6 +4640,7 @@ async function init() {
   if (state.doc?.dev) devLog("server dev mode enabled");
   setServerRevision(state.doc.revision ?? 0);
   syncDocTitle(state.doc);
+  revealFileBtnEl?.addEventListener("click", () => { void revealCurrentFile(); });
   renderUpdateUi({ current: state.doc.app_version, check_ok: false });
   updateBtnEl?.addEventListener("click", () => { void startUpdate(); });
   appVersionAvailableEl?.addEventListener("click", () => { void startUpdate(); });

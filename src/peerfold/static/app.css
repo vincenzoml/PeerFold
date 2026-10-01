@@ -148,18 +148,32 @@ body {
   text-overflow: ellipsis;
 }
 
-.reveal-file-btn {
-  min-width: 24px;
-  width: 24px;
-  height: 24px;
-  padding: 3px;
-  color: var(--muted);
+/* A quiet glyph beside the title, not a button-shaped box: no border or fill
+   until hovered. `.btn` comes later in this file and sets padding, so the
+   selector is doubled to win without !important. */
+.btn.reveal-file-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
+  width: 22px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
 }
 
-.reveal-file-btn:hover,
-.reveal-file-btn:focus-visible {
-  color: var(--accent);
+.btn.reveal-file-btn svg {
+  display: block;
+}
+
+.btn.reveal-file-btn:hover,
+.btn.reveal-file-btn:focus-visible {
+  color: var(--text);
+  background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 
 .doc-meta {

@@ -1815,3 +1815,68 @@ body {
 
 @media (max-width: 720px) {
 }
+
+.find-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 2px 2px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-solid);
+  color: var(--muted);
+}
+
+.find-bar:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, transparent);
+}
+
+.find-bar input {
+  width: 160px;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: 13px var(--font);
+  padding: 4px 6px;
+}
+
+.find-count {
+  min-width: 44px;
+  text-align: right;
+  font: 600 11px var(--mono);
+  user-select: none;
+}
+
+.find-count.none {
+  color: #d70015;
+}
+
+.find-nav {
+  width: 24px;
+  height: 24px;
+}
+
+.find-nav:disabled {
+  opacity: 0.38;
+  cursor: not-allowed;
+}
+
+.search-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.search-hit {
+  position: absolute;
+  border-radius: 2px;
+  background: rgba(255, 214, 10, 0.38);
+  mix-blend-mode: multiply;
+}
+
+.search-hit.current {
+  background: rgba(255, 149, 0, 0.55);
+  box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.9);
+}

@@ -150,6 +150,10 @@ const commentsPaneEl = $("#comments-pane");
 const commentsCollapseBtnEl = $("#comments-collapse-btn");
 const undoBtnEl = $("#undo-btn");
 const redoBtnEl = $("#redo-btn");
+const findInputEl = $("#find-input");
+const findCountEl = $("#find-count");
+const findPrevEl = $("#find-prev");
+const findNextEl = $("#find-next");
 const openPdfBtnEl = $("#open-pdf-btn");
 const openPdfInputEl = $("#open-pdf-input");
 
@@ -393,6 +397,9 @@ function wireNativeDropPaths() {
     else if (action === "export-markdown") void exportComments("markdown");
     else if (action === "export-text") void exportComments("text");
     else if (action === "select-all") selectAllComments();
+    else if (action === "find") focusFind();
+    else if (action === "find-next") stepFind(1);
+    else if (action === "find-previous") stepFind(-1);
     else if (action === "zoom-in") zoomFromShortcut("in");
     else if (action === "zoom-out") zoomFromShortcut("out");
     else if (action === "zoom-reset") zoomFromShortcut("reset");
@@ -489,6 +496,7 @@ async function applyOpenDocument(doc) {
   state.pendingNote = null;
   state.focusId = null;
   state.locateId = null;
+  resetFind();
   closeCommentEditor();
   clearCommentSelection();
   await syncDocFlags(doc);
@@ -4533,6 +4541,10 @@ async function loadPage(index) {
       textLayer.appendChild(span);
     }
 
+    const searchLayer = document.createElement("div");
+    searchLayer.className = "search-layer";
+    layer.appendChild(searchLayer);
+
     const draftLayer = document.createElement("div");
     draftLayer.className = "draft-layer";
     layer.appendChild(draftLayer);
@@ -4548,6 +4560,7 @@ async function loadPage(index) {
     const meta = {
       pageEl,
       textLayer,
+      searchLayer,
       draftLayer,
       annotLayer,
       linkLayer,
@@ -4558,6 +4571,7 @@ async function loadPage(index) {
     wireLinks(meta, data.links || [], data.scale);
     wireSelection(index, meta);
     renderHighlights(index);
+    renderFindHits(index);
   } finally {
     if (state.pageLoadGen.get(index) === generation) {
       state.loadingPages.delete(index);
@@ -4581,6 +4595,141 @@ function initPageViewport() {
     { root: viewerEl, rootMargin: PAGE_LOAD_MARGIN, threshold: 0 },
   );
   scheduleStubSync();
+}
+
+// --- Find in document -------------------------------------------------------
+// The server searches the PDF's own text (PyMuPDF, case-insensitive) and
+// returns rectangles in page coordinates; hits are drawn on each mounted page
+// and redrawn when a page mounts, so matches on unloaded pages appear on scroll.
+
+const FIND_DEBOUNCE_MS = 180;
+const findState = { query: "", matches: [], current: -1, truncated: false, gen: 0, timer: null };
+
+function resetFind() {
+  clearTimeout(findState.timer);
+  findState.gen += 1;
+  findState.query = "";
+  findState.matches = [];
+  findState.current = -1;
+  findState.truncated = false;
+  if (findInputEl) findInputEl.value = "";
+  syncFindUi();
+}
+
+function syncFindUi() {
+  const n = findState.matches.length;
+  if (findCountEl) {
+    findCountEl.textContent = !findState.query ? "" : n ? `${findState.current + 1}/${n}${findState.truncated ? "+" : ""}` : "0";
+    findCountEl.classList.toggle("none", Boolean(findState.query) && n === 0);
+  }
+  if (findPrevEl) findPrevEl.disabled = n === 0;
+  if (findNextEl) findNextEl.disabled = n === 0;
+  for (const idx of state.pages.keys()) renderFindHits(idx);
+}
+
+function renderFindHits(pageIndex) {
+  const meta = pageMeta(pageIndex);
+  if (!meta?.searchLayer) return;
+  meta.searchLayer.replaceChildren();
+  findState.matches.forEach((m, i) => {
+    if (m.page !== pageIndex) return;
+    const [x0, y0, x1, y1] = m.bbox;
+    const el = document.createElement("div");
+    el.className = i === findState.current ? "search-hit current" : "search-hit";
+    el.style.left = `${x0 * meta.scale}px`;
+    el.style.top = `${y0 * meta.scale}px`;
+    el.style.width = `${(x1 - x0) * meta.scale}px`;
+    el.style.height = `${(y1 - y0) * meta.scale}px`;
+    meta.searchLayer.appendChild(el);
+  });
+}
+
+function pageAtViewportCentre() {
+  const zoom = state.zoom || 1;
+  const centre = (viewerEl.scrollTop + viewerEl.clientHeight / 2) / zoom;
+  let page = 0;
+  for (let i = 0; i < (state.pageOffsets?.length || 0); i += 1) {
+    if (state.pageOffsets[i] <= centre) page = i;
+    else break;
+  }
+  return page;
+}
+
+async function runFind(query) {
+  const q = query.trim();
+  const gen = ++findState.gen;
+  if (!q || !state.doc?.open) {
+    findState.query = "";
+    findState.matches = [];
+    findState.current = -1;
+    syncFindUi();
+    return;
+  }
+  let data;
+  try {
+    data = await api(`/api/search?q=${encodeURIComponent(q)}`);
+  } catch (err) {
+    if (gen === findState.gen) toast(err.message || "Search failed");
+    return;
+  }
+  if (gen !== findState.gen) return;
+  findState.query = q;
+  findState.matches = data.matches || [];
+  findState.truncated = Boolean(data.truncated);
+  // Like every reader: start from the page in view, not from page one.
+  const here = pageAtViewportCentre();
+  const next = findState.matches.findIndex((m) => m.page >= here);
+  findState.current = findState.matches.length ? (next >= 0 ? next : 0) : -1;
+  syncFindUi();
+  if (findState.current >= 0) void revealFindMatch(findState.current);
+}
+
+async function revealFindMatch(i) {
+  const m = findState.matches[i];
+  if (!m) return;
+  await navigateToPdfDest(m.page, (m.bbox[1] + m.bbox[3]) / 2, { behavior: "auto" });
+  renderFindHits(m.page);
+}
+
+function stepFind(delta) {
+  const n = findState.matches.length;
+  if (!n) {
+    if (findInputEl?.value.trim() && findInputEl.value.trim() !== findState.query) void runFind(findInputEl.value);
+    return;
+  }
+  findState.current = (findState.current + delta + n) % n;
+  syncFindUi();
+  void revealFindMatch(findState.current);
+}
+
+function focusFind() {
+  if (!findInputEl) return;
+  findInputEl.focus();
+  findInputEl.select();
+}
+
+function wireFind() {
+  if (!findInputEl) return;
+  findInputEl.addEventListener("input", () => {
+    clearTimeout(findState.timer);
+    findState.timer = setTimeout(() => void runFind(findInputEl.value), FIND_DEBOUNCE_MS);
+  });
+  findInputEl.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      clearTimeout(findState.timer);
+      if (findInputEl.value.trim() !== findState.query) void runFind(findInputEl.value);
+      else stepFind(ev.shiftKey ? -1 : 1);
+    } else if (ev.key === "Escape") {
+      ev.preventDefault();
+      ev.stopPropagation();
+      resetFind();
+      findInputEl.blur();
+      viewerEl.focus({ preventScroll: true });
+    }
+  });
+  findPrevEl?.addEventListener("click", () => stepFind(-1));
+  findNextEl?.addEventListener("click", () => stepFind(1));
 }
 
 function routeDraftTyping(ev) {
@@ -4691,6 +4840,16 @@ async function init() {
       else void performUndo();
       return;
     }
+    if (isModKey(ev) && !ev.shiftKey && ev.key.toLowerCase() === "f") {
+      ev.preventDefault();
+      focusFind();
+      return;
+    }
+    if (isModKey(ev) && ev.key.toLowerCase() === "g") {
+      ev.preventDefault();
+      stepFind(ev.shiftKey ? -1 : 1);
+      return;
+    }
     if (isModKey(ev) && ev.key.toLowerCase() === "o") {
       ev.preventDefault();
       void pickAndOpenPdf();
@@ -4779,6 +4938,7 @@ async function init() {
   wireWorkspaceLayout();
   bindGlobalSelectionHandlers();
   wireZoomControls();
+  wireFind();
   viewerEl.addEventListener("scroll", () => {
     scheduleStubSync();
     scheduleNavStateReplace();

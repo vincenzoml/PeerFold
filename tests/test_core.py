@@ -282,3 +282,32 @@ def test_rects_overlap_positive_area():
     assert _rects_overlap([0, 0, 10, 10], [5, 5, 15, 15])
     assert not _rects_overlap([0, 0, 10, 10], [10, 0, 20, 10])
     assert not _rects_overlap([0, 0, 10, 10], [0, 10, 10, 20])
+
+
+def test_search_text_finds_matches_case_insensitively_in_reading_order(tmp_path, monkeypatch):
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    fitz = import_fitz()
+    pdf = tmp_path / "search.pdf"
+    doc = fitz.open()
+    first = doc.new_page()
+    first.insert_text((72, 72), "Smoothen the region")
+    first.insert_text((72, 120), "then smoothen again")
+    doc.new_page().insert_text((72, 72), "nothing here")
+    doc.new_page().insert_text((72, 72), "SMOOTHEN last")
+    doc.save(pdf)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    try:
+        found = session.search_text("  smoothen ")
+        assert found["query"] == "smoothen"
+        assert found["truncated"] is False
+        assert [m["page"] for m in found["matches"]] == [0, 0, 2]
+        y0s = [m["bbox"][1] for m in found["matches"][:2]]
+        assert y0s == sorted(y0s)
+        assert session.search_text("")["matches"] == []
+        assert session.search_text("absent")["matches"] == []
+        capped = session.search_text("smoothen", limit=2)
+        assert len(capped["matches"]) == 2 and capped["truncated"] is True
+    finally:
+        session.close()

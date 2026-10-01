@@ -73,6 +73,7 @@ PALETTE: dict[str, tuple[float, float, float]] = {
 }
 _PALETTE_MATCH_EPS = 0.04
 LINE_Y_TOL = 4.0
+SEARCH_LIMIT = 2000
 _BIB_LINE_RE = re.compile(r"^(\d+)\.\s+")
 _CITE_BRACKET_RE = re.compile(r"\[([^\]]+)\]")
 
@@ -779,6 +780,27 @@ class PdfSession:
                     out.append(entry)
         return out
 
+    def search_text(self, query: str, *, limit: int = SEARCH_LIMIT) -> dict[str, Any]:
+        """Find ``query`` in the document's text, case-insensitively, in reading order.
+
+        One entry per rectangle PyMuPDF reports, in page coordinates (the same
+        space as ``page_spans``); a hit broken across two lines gives two.
+        """
+        query = query.strip()
+        matches: list[dict[str, Any]] = []
+        if not query:
+            return {"query": query, "matches": matches, "truncated": False}
+        with self.lock:
+            for pno in range(self.doc.page_count):
+                page = self.doc.load_page(pno)
+                for rect in page.search_for(query):
+                    matches.append(
+                        {"page": pno, "bbox": [float(rect.x0), float(rect.y0), float(rect.x1), float(rect.y1)]}
+                    )
+                    if len(matches) >= limit:
+                        return {"query": query, "matches": matches, "truncated": True}
+        return {"query": query, "matches": matches, "truncated": False}
+
     def page_payload(self, index: int) -> dict[str, Any]:
         with self.lock:
             page = self.doc.load_page(index)
@@ -1471,6 +1493,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 return self._json(200, self.session.export_comments_payload(fmt, ids=ids))
             except ValueError as exc:
                 return self._json(400, {"error": str(exc)})
+        if path == "/api/search":
+            if self._guard_document():
+                return
+            qs = parse_qs(parsed.query)
+            return self._json(200, self.session.search_text(qs.get("q", [""])[0]))
         if path.startswith("/api/page/"):
             if self._guard_document():
                 return

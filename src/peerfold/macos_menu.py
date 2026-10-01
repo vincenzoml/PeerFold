@@ -24,6 +24,7 @@ _EDIT_MARKER = "PeerFoldUndo"
 _VIEW_MARKER = "PeerFoldZoomIn"
 _WINDOW_MARKER = "PeerFoldNewWindow"
 _COPY_COMMENTS_MARKER = "PeerFoldCopyComments"
+_FIND_MARKER = "PeerFoldFind"
 
 
 def refresh_application_menus(api: ApplicationMenuApi) -> None:
@@ -143,6 +144,13 @@ def refresh_standard_menus(api: ApplicationMenuApi) -> None:
             shift=True,
             marker=_COPY_COMMENTS_MARKER,
         )
+
+    if edit is not None and not _menu_has_marker(edit, _FIND_MARKER):
+        at = edit.numberOfItems()
+        edit.insertItem_atIndex_(AppKit.NSMenuItem.separatorItem(), at)
+        _insert_action(edit, at + 1, "Find…", "menu_find", "f", marker=_FIND_MARKER)
+        _insert_action(edit, at + 2, "Find Next", "menu_find_next", "g", marker=_FIND_MARKER)
+        _insert_action(edit, at + 3, "Find Previous", "menu_find_previous", "G", shift=True, marker=_FIND_MARKER)
 
     view = _submenu("View")
     if view is not None and not _menu_has_marker(view, _VIEW_MARKER):

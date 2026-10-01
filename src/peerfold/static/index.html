@@ -56,6 +56,17 @@
       <button id="undo-btn" type="button" class="btn zoom-btn" title="Undo (⌘Z)" disabled aria-label="Undo">↩</button>
       <button id="redo-btn" type="button" class="btn zoom-btn" title="Redo (⌘⇧Z)" disabled aria-label="Redo">↪</button>
     </div>
+    <div id="find-bar" class="find-bar" role="search" aria-label="Find in document">
+      <svg class="find-icon" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+        <circle cx="10.5" cy="10.5" r="6" fill="none" stroke="currentColor" stroke-width="2"/>
+        <path d="M15 15l5 5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+      <input id="find-input" type="search" placeholder="Find" spellcheck="false" autocomplete="off"
+             aria-label="Find in document" title="Find (⌘F) · next ↩ or ⌘G · previous ⇧↩ or ⌘⇧G">
+      <span id="find-count" class="find-count" aria-live="polite"></span>
+      <button id="find-prev" type="button" class="btn zoom-btn find-nav" title="Previous match (⌘⇧G)" aria-label="Previous match" disabled>‹</button>
+      <button id="find-next" type="button" class="btn zoom-btn find-nav" title="Next match (⌘G)" aria-label="Next match" disabled>›</button>
+    </div>
   </div>
 
   <input id="open-pdf-input" type="file" accept=".pdf,application/pdf" hidden>

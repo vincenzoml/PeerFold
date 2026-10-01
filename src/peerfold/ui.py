@@ -264,6 +264,30 @@ class ApplicationMenuApi:
         if api is not None:
             api.menu_select_all()
 
+    def menu_find(self) -> None:
+        run_on_main_thread(self._menu_find)
+
+    def _menu_find(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_find()
+
+    def menu_find_next(self) -> None:
+        run_on_main_thread(self._menu_find_next)
+
+    def _menu_find_next(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_find_next()
+
+    def menu_find_previous(self) -> None:
+        run_on_main_thread(self._menu_find_previous)
+
+    def _menu_find_previous(self) -> None:
+        api = self._host.api_for_active_window()
+        if api is not None:
+            api.menu_find_previous()
+
     def menu_copy_comments(self) -> None:
         self._host.copy_comments()
 
@@ -372,6 +396,15 @@ class PeerFoldApi:
 
     def menu_select_all(self) -> None:
         self._dispatch("select-all")
+
+    def menu_find(self) -> None:
+        self._dispatch("find")
+
+    def menu_find_next(self) -> None:
+        self._dispatch("find-next")
+
+    def menu_find_previous(self) -> None:
+        self._dispatch("find-previous")
 
     def menu_copy_comments(self) -> None:
         self._dispatch("copy-comments")
@@ -495,6 +528,9 @@ def build_application_menu(api: ApplicationMenuApi):
             MenuAction("Copy", api.menu_copy),
             MenuAction("Copy Comments", api.menu_copy_comments),
             MenuAction("Select All Comments", api.menu_select_all),
+            MenuAction("Find…", api.menu_find),
+            MenuAction("Find Next", api.menu_find_next),
+            MenuAction("Find Previous", api.menu_find_previous),
         ],
     )
     view_menu = Menu(

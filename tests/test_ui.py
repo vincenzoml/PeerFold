@@ -206,3 +206,16 @@ def test_reveal_in_file_manager_reveals_file_on_macos(monkeypatch, tmp_path):
     reveal_in_file_manager(str(pdf))
 
     assert launched == [["open", "-R", str(pdf.resolve())]]
+
+
+def test_edit_menu_offers_find_off_darwin(monkeypatch, tmp_path):
+    monkeypatch.setattr("peerfold.ui.list_recent_paths", lambda: [])
+    monkeypatch.setattr("peerfold.ui.sys.platform", "linux")
+    menu = build_application_menu(ApplicationMenuApi(_MenuHost()))
+    edit_menu = next(item for item in menu if item.title == "Edit")
+    titles = [item.title for item in edit_menu.items if hasattr(item, "title")]
+    assert {"Find…", "Find Next", "Find Previous"} <= set(titles)
+    # The menu entries must not raise when no window is active.
+    for item in edit_menu.items:
+        if getattr(item, "title", "").startswith("Find"):
+            item.function()

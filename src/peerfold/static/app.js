@@ -2090,6 +2090,38 @@ function editorValueFor(ann) {
   return ann.content ?? "";
 }
 
+// A save renumbers the PDF's xrefs, so the annotation being edited comes back
+// under a new id. Everything that points at the old one follows it here, in one
+// place: the focus, the editor's wiring, and the editor's own key. Each caller
+// used to drop `pendingNote` instead, which left an editor on screen that no
+// longer saved what was typed into it and no longer matched the focus.
+function adoptAnnotationId(oldId, newId) {
+  if (oldId == null || newId == null || oldId === newId) return;
+  if (state.focusId === oldId) state.focusId = newId;
+  if (state.pendingNote?.id === oldId) state.pendingNote.id = newId;
+  if (state.commentEditor?.mode === "ann" && state.commentEditor.key === String(oldId)) {
+    state.commentEditor.key = String(newId);
+  }
+}
+
+// Saving is bookkeeping; the person is still typing. Anything that redraws the
+// pane or a page runs inside this, so the caret comes back exactly where it
+// was even when the redraw moves the element that had it.
+async function keepingCommentFocus(run) {
+  const ta = commentEditorTa;
+  const typing = isEditingCommentText();
+  const start = typing ? ta.selectionStart : 0;
+  const end = typing ? ta.selectionEnd : 0;
+  try {
+    return await run();
+  } finally {
+    if (typing && ta && document.activeElement !== ta) {
+      ta.focus({ preventScroll: true });
+      ta.setSelectionRange(start, end);
+    }
+  }
+}
+
 function isEditingCommentText() {
   return Boolean(
     commentEditorTa
@@ -2296,46 +2328,41 @@ async function onDraftEditorInputSave(trigger = "autosave") {
       pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
     }
     const createdId = created.id;
-    state.draft = null;
-    state.lastRenderedDraftKey = null;
-    clearPreviewLayers();
-    renderAllHighlights();
-    await refreshPageBitmap(page);
-    syncDocFlags(await api("/api/document"));
-    emergencyBackup();
-    const savePath = created.save_path || state.doc?.save_path;
-    if (savePath && state.doc) state.doc.save_path = savePath;
-    updateDocMeta();
-    const typedAhead = commentEditorTa && commentEditorTa.value !== content
-      ? commentEditorTa.value
-      : null;
-    if (typedAhead !== null) {
-      created.content = typedAhead;
-      state.annotations.set(createdId, created);
-    }
-    // NOT closeCommentEditor(). The draft has become an annotation, which is
-    // bookkeeping; the person is still typing. Hand the open editor over to the
-    // new annotation, keeping the element, the focus and the caret, so the
-    // transition is invisible. Closing and reopening lost the keystrokes in
-    // between and put the caret at the end.
-    state.focusId = createdId;
-    if (state.commentEditor) {
-      state.commentEditor.mode = "ann";
-      state.commentEditor.key = String(createdId);
-    }
-    renderCommentsPane();
-    if (state.pendingNote && commentEditorTa) {
-      // renderCommentsPane has just wired this annotation's own handlers;
-      // the textarea is still carrying the draft's, which would do nothing now.
-      state.pendingNote.ta = commentEditorTa;
-      commentEditorTa.oninput = state.pendingNote.onInput ?? null;
-      commentEditorTa.onkeydown = state.pendingNote.onKeydown ?? null;
-    }
-    updateCommentSelectionUi();
-    flashHighlight(createdId);
-    commentsListEl
-      ?.querySelector(`.comment-card[data-id="${createdId}"]`)
-      ?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    await keepingCommentFocus(async () => {
+      state.draft = null;
+      state.lastRenderedDraftKey = null;
+      clearPreviewLayers();
+      renderAllHighlights();
+      await refreshPageBitmap(page);
+      syncDocFlags(await api("/api/document"));
+      emergencyBackup();
+      const savePath = created.save_path || state.doc?.save_path;
+      if (savePath && state.doc) state.doc.save_path = savePath;
+      updateDocMeta();
+      const typedAhead = commentEditorTa && commentEditorTa.value !== content
+        ? commentEditorTa.value
+        : null;
+      if (typedAhead !== null) {
+        created.content = typedAhead;
+        state.annotations.set(createdId, created);
+      }
+      // NOT closeCommentEditor(). The draft has become an annotation, which is
+      // bookkeeping; the person is still typing. Hand the open editor over to the
+      // new annotation, keeping the element, the focus and the caret, so the
+      // transition is invisible. Closing and reopening lost the keystrokes in
+      // between and put the caret at the end.
+      state.focusId = createdId;
+      if (state.commentEditor) {
+        state.commentEditor.mode = "ann";
+        state.commentEditor.key = String(createdId);
+      }
+      renderCommentsPane();
+      updateCommentSelectionUi();
+      flashHighlight(createdId);
+      commentsListEl
+        ?.querySelector(`.comment-card[data-id="${createdId}"]`)
+        ?.scrollIntoView({ block: "nearest", behavior: "auto" });
+    });
     toast(`Comment saved · ${basename(savePath)}`, 2800);
     devLog("draft save: ok", { trigger, id: createdId, page });
     if (typedAhead !== null) {
@@ -3333,6 +3360,13 @@ function renderCommentsPane() {
         onInput: editors.onInput,
         onKeydown: editors.onKeydown,
       };
+      // The card these handlers close over has just been rebuilt. An editor
+      // that is already open keeps its element, so it would otherwise go on
+      // calling the handlers of the card that no longer exists.
+      if (isCommentEditorOpen() && commentEditorTa) {
+        commentEditorTa.oninput = editors.onInput;
+        commentEditorTa.onkeydown = editors.onKeydown;
+      }
     }
   }
 
@@ -3824,8 +3858,7 @@ async function performRedo() {
 function applyAnnotationUpdate(updated) {
   if (updated.replaced_id != null) {
     state.annotations.delete(updated.replaced_id);
-    if (state.focusId === updated.replaced_id) state.focusId = updated.id;
-    if (state.pendingNote?.id === updated.replaced_id) state.pendingNote = null;
+    adoptAnnotationId(updated.replaced_id, updated.id);
     if (state.locateId === updated.replaced_id) state.locateId = updated.id;
   }
   state.annotations.set(updated.id, updated);
@@ -3837,25 +3870,27 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
     body: JSON.stringify(patch),
   }));
   applyAnnotationUpdate(updated);
-  renderHighlights(updated.page);
-  const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
-  const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
-  const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
-  if (colorOnly) {
-    refreshAnnotationChrome(updated.id);
-    updatePaletteSelection(updated.color);
-  } else if (keepEditor) {
-    refreshAnnotationChrome(updated.id);
-    updatePaletteSelection(updated.color);
-    await refreshPageBitmap(updated.page);
-  } else if (!editingThis) {
-    await refreshPageBitmap(updated.page);
-    renderCommentsPane();
-  } else if (!colorOnly) {
-    await refreshPageBitmap(updated.page);
-  }
-  emergencyBackup();
-  updateDocMeta();
+  await keepingCommentFocus(async () => {
+    renderHighlights(updated.page);
+    const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
+    const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
+    const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
+    if (colorOnly) {
+      refreshAnnotationChrome(updated.id);
+      updatePaletteSelection(updated.color);
+    } else if (keepEditor) {
+      refreshAnnotationChrome(updated.id);
+      updatePaletteSelection(updated.color);
+      await refreshPageBitmap(updated.page);
+    } else if (!editingThis) {
+      await refreshPageBitmap(updated.page);
+      renderCommentsPane();
+    } else if (!colorOnly) {
+      await refreshPageBitmap(updated.page);
+    }
+    emergencyBackup();
+    updateDocMeta();
+  });
   if (!quiet && !colorOnly) toast("Saved");
   return updated;
 }
@@ -4394,15 +4429,7 @@ function mergeAnnotationsFromServer(list) {
     if (!match) {
       state.pendingNote = null;
     } else if (state.pendingNote && state.pendingNote.id !== match.id) {
-      // The same annotation under a new id: ids are PDF xrefs and a save
-      // renumbers them. Follow it instead of dropping the wiring. Dropping it
-      // left an editor on screen whose typing no longer autosaved and whose
-      // key no longer matched the focus, so the next render closed it and
-      // nothing short of a page reload brought it back.
-      state.pendingNote.id = match.id;
-      if (state.commentEditor?.mode === "ann") {
-        state.commentEditor.key = String(match.id);
-      }
+      adoptAnnotationId(state.pendingNote.id, match.id);
     }
   }
 

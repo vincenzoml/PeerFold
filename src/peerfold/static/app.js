@@ -2313,9 +2313,24 @@ async function onDraftEditorInputSave(trigger = "autosave") {
       created.content = typedAhead;
       state.annotations.set(createdId, created);
     }
-    closeCommentEditor();
+    // NOT closeCommentEditor(). The draft has become an annotation, which is
+    // bookkeeping; the person is still typing. Hand the open editor over to the
+    // new annotation, keeping the element, the focus and the caret, so the
+    // transition is invisible. Closing and reopening lost the keystrokes in
+    // between and put the caret at the end.
     state.focusId = createdId;
+    if (state.commentEditor) {
+      state.commentEditor.mode = "ann";
+      state.commentEditor.key = String(createdId);
+    }
     renderCommentsPane();
+    if (state.pendingNote && commentEditorTa) {
+      // renderCommentsPane has just wired this annotation's own handlers;
+      // the textarea is still carrying the draft's, which would do nothing now.
+      state.pendingNote.ta = commentEditorTa;
+      commentEditorTa.oninput = state.pendingNote.onInput ?? null;
+      commentEditorTa.onkeydown = state.pendingNote.onKeydown ?? null;
+    }
     updateCommentSelectionUi();
     flashHighlight(createdId);
     commentsListEl
@@ -4379,7 +4394,15 @@ function mergeAnnotationsFromServer(list) {
     if (!match) {
       state.pendingNote = null;
     } else if (state.pendingNote && state.pendingNote.id !== match.id) {
-      state.pendingNote = null;
+      // The same annotation under a new id: ids are PDF xrefs and a save
+      // renumbers them. Follow it instead of dropping the wiring. Dropping it
+      // left an editor on screen whose typing no longer autosaved and whose
+      // key no longer matched the focus, so the next render closed it and
+      // nothing short of a page reload brought it back.
+      state.pendingNote.id = match.id;
+      if (state.commentEditor?.mode === "ann") {
+        state.commentEditor.key = String(match.id);
+      }
     }
   }
 
@@ -4400,6 +4423,14 @@ function mergeAnnotationsFromServer(list) {
 async function pullServerState({ quiet = false } = {}) {
   if (state.savePending > 0) return;
   if (state.draft) return;
+  // AND NOT WHILE A COMMENT IS OPEN. This poll runs once a second, and the
+  // merge below rebuilds the annotation map from the server's copy. Doing that
+  // under an open editor took the editor away mid-sentence: the person's own
+  // first save bumps the revision, the next tick sees `changed`, and the
+  // comment they were still writing closed on them. Nothing is lost by
+  // waiting -- `since` does not advance, so the next tick after the editor
+  // closes picks up whatever the disk has.
+  if (isCommentEditorOpen()) return;
   try {
     const res = await api(`/api/sync?since=${state.serverRevision}`);
     applyServerRevision(res.revision);

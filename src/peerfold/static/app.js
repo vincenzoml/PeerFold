@@ -2055,14 +2055,6 @@ function onCommentDeleteClick() {
 
 function closeCommentEditor() {
   if (!commentEditorEl || commentEditorEl.hidden) return;
-  // NEVER under the person's hands. Hiding the element blurs it, which is how
-  // a comment being typed lost the caret; the ways out of an editor that the
-  // person asks for -- Enter, Escape, clicking elsewhere -- all blur it first,
-  // so this refuses nothing they actually requested.
-  if (isEditingCommentText()) {
-    devLog("closeCommentEditor refused: the comment has the caret");
-    return;
-  }
   if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   disarmCommentDelete();
   unbindCommentEditorReposition();
@@ -2133,6 +2125,9 @@ async function keepingCommentFocus(run) {
   }
 }
 
+// An annotation id of 0 is a real id. `state.focusId` is therefore compared
+// against null everywhere rather than tested for truth: the first comment in a
+// fresh document gets id 0, and a truth test reads that as "nothing in focus".
 function isEditingCommentText() {
   return Boolean(
     commentEditorTa
@@ -2260,7 +2255,7 @@ function syncCommentEditor() {
     return;
   }
 
-  if (state.focusId && state.annotations.has(state.focusId)) {
+  if (state.focusId != null && state.annotations.has(state.focusId)) {
     const editorKey = String(state.focusId);
     if (
       state.commentEditor?.mode === "ann"
@@ -2339,6 +2334,11 @@ async function onDraftEditorInputSave(trigger = "autosave") {
       pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
     }
     const createdId = created.id;
+    // Declared out here on purpose: both are read after the block below, and
+    // declaring them inside it is what made every first save throw
+    // "savePath is not defined" the moment the annotation had been created.
+    let savePath = null;
+    let typedAhead = null;
     await keepingCommentFocus(async () => {
       state.draft = null;
       state.lastRenderedDraftKey = null;
@@ -2347,10 +2347,10 @@ async function onDraftEditorInputSave(trigger = "autosave") {
       await refreshPageBitmap(page);
       syncDocFlags(await api("/api/document"));
       emergencyBackup();
-      const savePath = created.save_path || state.doc?.save_path;
+      savePath = created.save_path || state.doc?.save_path;
       if (savePath && state.doc) state.doc.save_path = savePath;
       updateDocMeta();
-      const typedAhead = commentEditorTa && commentEditorTa.value !== content
+      typedAhead = commentEditorTa && commentEditorTa.value !== content
         ? commentEditorTa.value
         : null;
       if (typedAhead !== null) {
@@ -2382,8 +2382,14 @@ async function onDraftEditorInputSave(trigger = "autosave") {
     }
     return true;
   } catch (err) {
-    state.draft.saving = false;
-    syncDraftTextFromEditor();
+    // The success path clears `state.draft`, so anything that throws AFTER the
+    // save lands here with nothing to clear -- and this line then threw a
+    // second TypeError that replaced the first. The real failure never printed,
+    // which is why two readings of this function found nothing.
+    if (state.draft) {
+      state.draft.saving = false;
+      syncDraftTextFromEditor();
+    }
     syncCommentEditor();
     const msg = err.message || "";
     devWarn("draft save: failed", { trigger, message: msg, page, span_ids: ids, rects, contentLength: content.length });
@@ -3358,7 +3364,7 @@ function renderCommentsPane() {
   }
   commentsCountEl.textContent = String(state.annotations.size);
 
-  if (keepFocus && state.annotations.has(keepFocus)) {
+  if (keepFocus != null && state.annotations.has(keepFocus)) {
     const card = commentsListEl.querySelector(`.comment-card[data-id="${keepFocus}"]`);
     const ann = state.annotations.get(keepFocus);
     if (card && ann) {
@@ -4431,7 +4437,7 @@ function registerAnnotationColors(list) {
 
 function mergeAnnotationsFromServer(list) {
   const prevFocus = state.focusId;
-  const prevKey = prevFocus ? annotKey(state.annotations.get(prevFocus)) : null;
+  const prevKey = prevFocus != null ? annotKey(state.annotations.get(prevFocus)) : null;
   const editingText = state.pendingNote?.ta?.value;
 
   registerAnnotationColors(list);
@@ -4865,7 +4871,21 @@ async function init() {
     duplicateWindowBtnEl?.remove();
   }
   state.doc = await waitForApp();
-  if (state.doc?.dev) devLog("server dev mode enabled");
+  if (state.doc?.dev) {
+    devLog("server dev mode enabled");
+    // Diagnosis only. The focus bug has survived two rounds of reading the
+    // code, so the next round drives the real functions and watches what
+    // blurs, instead of guessing which redraw it was.
+    window.__peerfold = {
+      state,
+      ta: () => commentEditorTa,
+      showDraft,
+      settleDraft,
+      renderCommentsPane,
+      patchAnnotation,
+      isEditingCommentText,
+    };
+  }
   setServerRevision(state.doc.revision ?? 0);
   syncDocTitle(state.doc);
   revealFileBtnEl?.addEventListener("click", () => { void revealCurrentFile(); });

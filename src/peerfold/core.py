@@ -251,13 +251,25 @@ def merge_line_rects(spans: list[dict[str, Any]], *, y_tol: float = LINE_Y_TOL) 
     return rects
 
 
+#: How much of the shorter box's height two boxes must share to be on the same
+#: line. Adjacent lines' boxes touch -- a glyph box is taller than the line gap
+#: -- so an absolute tolerance fails at the boundary: 0.5 pt rejected a comment
+#: whose box shared 0.502 pt with the highlight on the line above, and every
+#: save of it failed as an "overlap". Boxes on one line share most of their
+#: height; boxes on neighbouring lines share a sliver. app.js has the same rule
+#: in rectsOverlap, and the two must agree or the page offers selections the
+#: server refuses.
+SAME_LINE_FRACTION = 0.3
+
+
 def _rects_overlap(a: list[float], b: list[float], tol: float = 0.5) -> bool:
-    """True only when rects share positive area (edge/corner touch is not overlap)."""
+    """True when two text boxes really overlap: on the same line, and sharing width."""
     ax0, ay0, ax1, ay1 = a
     bx0, by0, bx1, by1 = b
     width = min(ax1, bx1) - max(ax0, bx0)
     height = min(ay1, by1) - max(ay0, by0)
-    return width > tol and height > tol
+    shorter = max(min(ay1 - ay0, by1 - by0), 0.0)
+    return width > tol and height > max(tol, SAME_LINE_FRACTION * shorter)
 
 
 def _annotation_overlaps_rects(ann_rects: list[list[float]], new_rects: list[list[float]]) -> bool:

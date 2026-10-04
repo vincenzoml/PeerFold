@@ -355,3 +355,26 @@ def test_a_saved_comment_keeps_its_id(tmp_path, monkeypatch):
         assert listed.get(second["id"]) == "second", f"ids moved: {listed}"
     finally:
         session.close()
+
+
+def test_highlights_on_adjacent_lines_do_not_overlap():
+    """A box that touches the line above is not on it.
+
+    Glyph boxes are taller than the gap between lines, so neighbouring lines'
+    boxes share a sliver. With an absolute 0.5 pt tolerance a comment whose box
+    shared 0.502 pt with the highlight above was refused as an overlap, and
+    every save of it failed. These are the rectangles from that report.
+    """
+    from peerfold.core import _rects_overlap
+
+    above = [370.4413757324219, 643.1932373046875, 480.5978088378906, 655.6494750976562]
+    word_below = [446.0509948730469, 655.1482543945312, 462.09075927734375, 665.11083984375]
+    assert not _rects_overlap(above, word_below)
+    assert not _rects_overlap(word_below, above)
+
+    # Same line, partly covered: still an overlap.
+    same_line = [460.0, 643.5, 500.0, 655.0]
+    assert _rects_overlap(above, same_line)
+    # Same line, merely adjacent words: not an overlap.
+    next_word = [480.6, 643.2, 500.0, 655.6]
+    assert not _rects_overlap(above, next_word)

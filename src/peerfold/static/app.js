@@ -174,7 +174,9 @@ async function api(path, opts = {}) {
   }
   if (!res.ok) {
     if (isDev()) devWarn("api error", { path, status: res.status, error: data.error || res.statusText, body: data });
-    throw new Error(data.error || res.statusText);
+    const err = new Error(data.error || res.statusText);
+    err.status = res.status;
+    throw err;
   }
   return data;
 }
@@ -1942,10 +1944,20 @@ function compareSortKeys(a, b) {
   return 0;
 }
 
+// The same rule as core.py's _rects_overlap, and it must stay the same: if the
+// page thought a selection was free that the server thinks overlaps, the
+// comment can never be saved. Two boxes overlap when they share width AND share
+// a real part of the shorter one's height -- boxes on one line share most of
+// it, boxes on neighbouring lines only touch. An absolute 0.5 pt rejected a
+// comment that touched the line above by 0.502 pt, and pulled words from the
+// next line into a comment's quote.
+const SAME_LINE_FRACTION = 0.3;
+
 function rectsOverlap(a, b, tol = 0.5) {
   const width = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
   const height = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-  return width > tol && height > tol;
+  const shorter = Math.max(Math.min(a[3] - a[1], b[3] - b[1]), 0);
+  return width > tol && height > Math.max(tol, SAME_LINE_FRACTION * shorter);
 }
 
 function autosizeCommentEditorTa() {
@@ -2131,6 +2143,7 @@ function createAutosaver({ save, wait = AUTOSAVE_WAIT_MS, maxWait = AUTOSAVE_MAX
   let dirty = false;
   let inflight = 0;
   let failures = 0;
+  let lastRefusal = null;
   let chain = Promise.resolve();
 
   const step = async () => {
@@ -2141,8 +2154,20 @@ function createAutosaver({ save, wait = AUTOSAVE_WAIT_MS, maxWait = AUTOSAVE_MAX
     try {
       await save();
       failures = 0;
+      lastRefusal = null;
     } catch (err) {
-      // Keep the text: it is still unsaved. Retry with backoff, and say so once.
+      // The text stays in the editor either way; what differs is whether
+      // asking again can help. A refusal (4xx: an overlap, a comment that no
+      // longer exists) will be refused again, so it is reported once and not
+      // retried -- retrying it on a timer is what the previous version did,
+      // forever. A failure (network, server error) is retried with backoff.
+      const refused = err?.status >= 400 && err?.status < 500 && err.status !== 408 && err.status !== 429;
+      if (refused) {
+        devWarn("autosave refused", { message: err?.message, status: err?.status });
+        if (err?.message !== lastRefusal) toast(userFacingError(err, "The comment could not be saved"), 5000);
+        lastRefusal = err?.message;
+        return;
+      }
       dirty = true;
       failures += 1;
       const backoff = Math.min(15000, 1000 * 2 ** (failures - 1));

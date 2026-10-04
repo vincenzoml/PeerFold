@@ -311,3 +311,47 @@ def test_search_text_finds_matches_case_insensitively_in_reading_order(tmp_path,
         assert len(capped["matches"]) == 2 and capped["truncated"] is True
     finally:
         session.close()
+
+
+def test_a_saved_comment_keeps_its_id(tmp_path, monkeypatch):
+    """The id a create returns must still name the comment after it is saved.
+
+    Saving with garbage=3 compacted the cross-reference table of the LIVE
+    document, so every save renumbered every annotation: the create response
+    read the xref of an orphaned object (0), the next edit of that comment
+    failed with "not found", and the editor's recovery from that failure is
+    what kept taking the caret away from the person typing.
+
+    The renumbering only happens when there is something to compact, so the
+    document is built with a free object in it -- an annotation added and then
+    deleted, saved without garbage collection -- which is the ordinary state
+    of a PDF that has been reviewed before.
+    """
+    monkeypatch.delenv("PEERFOLD_SAVE_COPY", raising=False)
+    fitz = import_fitz()
+    pdf = tmp_path / "ids.pdf"
+    doc = fitz.open()
+    page = doc.new_page()
+    for y in (72, 96, 120):
+        page.insert_text((72, y), "highlight target")
+    gone = page.add_text_annot((300, 300), "leaves a free object behind")
+    gone.update()
+    page.delete_annot(gone)
+    doc.save(pdf, garbage=0)
+    doc.close()
+
+    session = PdfSession(pdf, "VC", fitz, defer_maintenance=True)
+    try:
+        spans = [s["id"] for s in session.page_spans(0) if s["text"] == "highlight"]
+        first = session.create_highlight(0, [spans[0]], "yellow", "first")
+        assert first["id"] != 0, "the create answered with the xref of an orphaned object"
+
+        edited = session.update_annotation(first["id"], content="first, edited")
+        assert edited["id"] == first["id"]
+
+        second = session.create_highlight(0, [spans[1]], "yellow", "second")
+        listed = {a["id"]: a["content"] for a in session.list_annotations()}
+        assert listed.get(first["id"]) == "first, edited", f"ids moved: {listed}"
+        assert listed.get(second["id"]) == "second", f"ids moved: {listed}"
+    finally:
+        session.close()

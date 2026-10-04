@@ -634,7 +634,16 @@ class PdfSession:
         self._ensure_fresh_before_save()
         self._backup_existing(target)
         tmp = target.with_suffix(target.suffix + ".tmp")
-        self.doc.save(str(tmp), incremental=False, garbage=3, deflate=True)
+        # garbage=1, NOT 3. Levels 2 and up compact the cross-reference table,
+        # and MuPDF does that to the LIVE document, not only to the file: every
+        # save renumbered every annotation. Measured: a comment created as object
+        # 386 read as 0 straight after the save, and the document listed it as
+        # 375. The id the client had just been given was dead on arrival, the
+        # next save of that comment failed with "not found", and the editor's
+        # recovery from that failure is what kept taking the caret away.
+        # Level 1 still drops unreferenced objects (deleted comments), and an
+        # object number now means the same thing for the whole session.
+        self.doc.save(str(tmp), incremental=False, garbage=1, deflate=True)
         tmp.replace(target)
         self.unsaved = False
         self._note_mtime()

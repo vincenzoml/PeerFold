@@ -1,5 +1,4 @@
 const SPAN_PICK_MAX_DIST = 14;
-let draftSaveTimer = null;
 let ctxSuppressCloseUntil = 0;
 
 function isDev() {
@@ -493,6 +492,12 @@ async function applyOpenDocument(doc) {
   clearHistory();
   state.annotations.clear();
   state.draft = null;
+  if (editorSession) {
+    // The server has already switched documents; a save now would land in the
+    // wrong one. The switch is preceded by confirmUnsaved and by blurComment.
+    editorSession.autosaver.cancel();
+    editorSession = null;
+  }
   state.pendingNote = null;
   state.focusId = null;
   state.locateId = null;
@@ -775,6 +780,18 @@ function emergencyBackup() {
 }
 
 function clearNativeSelection() {
+  // NOT while someone is typing. To the browser, a focused text field's caret
+  // IS the document selection, so emptying the selection took the caret out of
+  // the comment box while leaving the box "focused": `document.activeElement`
+  // still pointed at it, nothing could be typed, and every check written to
+  // catch a lost focus saw nothing. The first save of a new comment calls this
+  // (through clearPreviewLayers, to drop the draft's overlay), which is why the
+  // caret went exactly when the debounce fired. What this is for -- clearing a
+  // selection made in the PDF -- never needs doing while a field has the focus.
+  const active = document.activeElement;
+  if (active && (active.tagName === "TEXTAREA" || active.tagName === "INPUT" || active.isContentEditable)) {
+    return;
+  }
   const sel = window.getSelection?.();
   if (!sel) return;
   if (sel.empty) sel.empty();
@@ -801,8 +818,11 @@ function clearTextSelection() {
 }
 
 function clearDraft() {
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
+  // A draft being cleared while its session is live is being finished by
+  // something other than settleDraft; save what was typed rather than drop it.
+  if (editorSession && editorSession.draft === state.draft && editorSession.annId == null) {
+    void endEditorSession({ save: true });
+  }
   clearPreviewLayers();
   state.draft = null;
   state.lastRenderedDraftKey = null;
@@ -813,7 +833,13 @@ function clearDraft() {
 
 function syncDraftTextFromEditor() {
   if (!state.draft || state.draft.committed) return;
-  if (commentEditorTa) state.draft.text = commentEditorTa.value;
+  // Only the draft whose session is in the editor may take the editor's text.
+  // This used to copy the textarea into whatever draft was current, and it ran
+  // at the top of openCommentEditor -- so a new selection made while another
+  // comment was open began life holding that other comment's text, and saved
+  // it as its own.
+  const s = editorSession;
+  if (s && s.annId == null && s.draft === state.draft) state.draft.text = s.text;
 }
 
 function draftText() {
@@ -821,42 +847,35 @@ function draftText() {
 }
 
 async function settleDraft(trigger = "settle") {
+  const s = editorSession;
   if (!state.draft || state.draft.committed) {
+    // Already created by an earlier save: it finishes like any comment.
+    if (s && s.origin === "draft") {
+      await endEditorSession({ save: true });
+      state.focusId = null;
+      closeCommentEditor();
+      renderAllHighlights();
+      renderCommentsPane();
+    }
     devLog("settleDraft: no active draft", { trigger });
     return;
   }
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
-  syncDraftTextFromEditor();
-  const text = draftText();
-  const rects = draftCommitRects();
-  let saved = false;
-  if (text && rects.length) {
-    if (state.draft.saving) {
-      devLog("settleDraft: waiting for in-flight save", { trigger });
-      for (let i = 0; i < 40 && state.draft?.saving; i += 1) {
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-    }
-    if (state.draft && !state.draft.saving) saved = await onDraftEditorInputSave(trigger);
-  } else {
-    devLog("settleDraft: skip save", {
-      trigger,
-      reason: !text ? "empty text" : "no commit rects",
-      displayRectCount: draftDisplayRects().length,
-      commitRectCount: state.draft.commitRects?.length ?? 0,
-    });
-  }
-  devLog("settleDraft: done", { trigger, saved, draftRemains: Boolean(state.draft) });
+  // Ending the session flushes it, which creates the annotation if anything
+  // was typed and does nothing if the draft was left empty.
+  if (s && s.draft === state.draft) await endEditorSession({ save: true });
+  devLog("settleDraft: done", { trigger, created: s?.annId ?? null });
   if (state.draft) clearDraft();
+  else {
+    closeCommentEditor();
+    renderCommentsPane();
+  }
 }
 
 function settleDraftSync() {
   if (!state.draft || state.draft.committed) return;
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
-  if (draftText()) void onDraftEditorInputSave();
-  else clearDraft();
+  const s = editorSession;
+  if (s && s.draft === state.draft) void endEditorSession({ save: true });
+  clearDraft();
 }
 
 function draftSelectionKey(draft) {
@@ -874,60 +893,15 @@ function draftSelectionKey(draft) {
   ].join("|");
 }
 
-function snapshotDraftForSave(draft, text) {
-  const rects = draftCommitRects(draft);
-  const trimmed = trimText(text);
-  if (!draft || !rects.length || !trimmed) return null;
-  return {
-    pageIndex: draft.pageIndex,
-    spanIds: draft.spanIds,
-    rects,
-    color: draft.color,
-    text: trimmed,
-  };
-}
-
-async function saveDraftSnapshot(snap) {
-  if (!snap) return;
-  devLog("saveDraftSnapshot: starting", snap);
-  try {
-    const created = await withSave(() => api("/api/annotations", {
-      method: "POST",
-      body: JSON.stringify({
-        page: snap.pageIndex,
-        span_ids: snap.spanIds,
-        rects: snap.rects,
-        color: snap.color,
-        content: snap.text,
-      }),
-    }));
-    state.annotations.set(created.id, created);
-    if (!state.historyApplying) {
-      pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
-    }
-    renderAllHighlights();
-    await refreshPageBitmap(snap.pageIndex);
-    syncDocFlags(await api("/api/document"));
-    emergencyBackup();
-    const savePath = created.save_path || state.doc?.save_path;
-    if (savePath && state.doc) state.doc.save_path = savePath;
-    updateDocMeta();
-    renderCommentsPane();
-    devLog("saveDraftSnapshot: ok", { id: created.id });
-  } catch (err) {
-    devWarn("saveDraftSnapshot: failed", { message: err.message, snap });
-  }
-}
-
 function prepareDraftForNewSelection() {
-  if (!state.draft || state.draft.committed || state.draft.saving) return;
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
-  syncDraftTextFromEditor();
-  const snap = snapshotDraftForSave(state.draft, draftText());
+  // A new selection while a draft is open: the open draft is finished (and
+  // created, if it has text) by its own session. This used to be a second,
+  // separate save path that built a snapshot and posted it itself.
+  if (!state.draft || state.draft.committed) return;
   state.lastRenderedDraftKey = null;
+  const s = editorSession;
+  if (s && s.draft === state.draft) void endEditorSession({ save: true });
   clearDraft();
-  if (snap) void saveDraftSnapshot(snap);
 }
 
 function editorIsOpen() {
@@ -1052,9 +1026,9 @@ function hasUnsavedChanges() {
   if (state.localDirty) return true;
   if (state.doc?.unsaved) return true;
   if (state.draft && trimText(state.draft.text)) return true;
-  if (state.pendingNote) {
-    const ann = state.annotations.get(state.pendingNote.id);
-    if (ann && state.pendingNote.ta.value !== ann.content) return true;
+  if (editorSession?.autosaver.pending) return true;
+  if (editorSession && editorSession.text !== editorSession.saved && trimText(editorSession.text)) {
+    return true;
   }
   return false;
 }
@@ -2055,6 +2029,13 @@ function onCommentDeleteClick() {
 
 function closeCommentEditor() {
   if (!commentEditorEl || commentEditorEl.hidden) return;
+  // A live session is closed by ending it, and only the person's own exits do
+  // that (Enter, Escape, a click elsewhere, choosing another comment). A render
+  // that arrives here while the session is live is a render, not a decision.
+  if (editorSession) {
+    devLog("closeCommentEditor: left open, a session is live");
+    return;
+  }
   if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   disarmCommentDelete();
   unbindCommentEditorReposition();
@@ -2098,6 +2079,7 @@ function editorValueFor(ann) {
 function adoptAnnotationId(oldId, newId) {
   if (oldId == null || newId == null || oldId === newId) return;
   if (state.focusId === oldId) state.focusId = newId;
+  if (editorSession?.annId === oldId) editorSession.annId = newId;
   if (state.pendingNote?.id === oldId) state.pendingNote.id = newId;
   if (state.commentEditor?.mode === "ann" && state.commentEditor.key === String(oldId)) {
     state.commentEditor.key = String(newId);
@@ -2107,22 +2089,350 @@ function adoptAnnotationId(oldId, newId) {
 // Saving is bookkeeping; the person is still typing. Anything that redraws the
 // pane or a page runs inside this, so the caret comes back exactly where it
 // was even when the redraw moves the element that had it.
-async function keepingCommentFocus(run) {
-  const ta = commentEditorTa;
-  const typing = isEditingCommentText();
-  const start = typing ? ta.selectionStart : 0;
-  const end = typing ? ta.selectionEnd : 0;
-  try {
-    return await run();
-  } finally {
-    if (typing && ta && document.activeElement !== ta) {
-      devWarn("comment focus was taken by a redraw; putting it back", {
-        took: document.activeElement?.id || document.activeElement?.tagName,
-      });
-      ta.focus({ preventScroll: true });
-      ta.setSelectionRange(start, end);
+// ── Comment editing: one session per open comment ──────────────────────────
+//
+// WHY THIS IS ONE OBJECT. Editing used to be spread over two timers (a draft's
+// and an annotation's), handlers reassigned onto the shared textarea by
+// whichever render ran last, closures holding the id an annotation had when its
+// card was built, and a focus test deciding whether a redraw could reset the
+// editor. Each piece was reasonable on its own. Together they lost focus, lost
+// keystrokes, and could write one comment's text into another: type in A, click
+// B inside the debounce window, and A's pending save read the textarea that by
+// then held B.
+//
+// A session owns one comment from the moment its editor opens until the person
+// closes it:
+//   - its text lives in the session, so a save can only ever store that text;
+//   - its annotation id follows the comment through creation and through the
+//     renumbering a save can cause (adoptAnnotationId);
+//   - it has one autosaver, so there is never more than one request in flight
+//     and the last thing typed is always the last thing stored;
+//   - while it is live, nothing but the person closes the editor, resets its
+//     text or moves its caret. Renders update the editor's chrome and nothing
+//     else (sessionOwns), closeCommentEditor refuses, and a blur that nobody
+//     asked for is undone (the guard in wireCommentEditor).
+let editorSession = null;
+let lastUserIntentAt = 0;
+
+// Every save rewrites the whole PDF on the server, so the debounce is longer
+// than an editor that stores one record would use; the ceiling keeps a long
+// unbroken burst from going unsaved for more than a few seconds.
+const AUTOSAVE_WAIT_MS = 700;
+const AUTOSAVE_MAX_WAIT_MS = 4000;
+
+function createAutosaver({ save, wait = AUTOSAVE_WAIT_MS, maxWait = AUTOSAVE_MAX_WAIT_MS }) {
+  // Trailing debounce with a ceiling, run through a queue of one: a burst of
+  // typing is one save, a long burst still saves every `maxWait`, and saves
+  // run strictly one after another, each reading the latest text when it
+  // starts. Concurrent requests are what let responses arrive out of order
+  // and patch an id the previous response had already retired.
+  let timer = null;
+  let burstStartedAt = 0;
+  let dirty = false;
+  let inflight = 0;
+  let failures = 0;
+  let chain = Promise.resolve();
+
+  const step = async () => {
+    if (!dirty) return;
+    dirty = false;
+    burstStartedAt = 0;
+    inflight += 1;
+    try {
+      await save();
+      failures = 0;
+    } catch (err) {
+      // Keep the text: it is still unsaved. Retry with backoff, and say so once.
+      dirty = true;
+      failures += 1;
+      const backoff = Math.min(15000, 1000 * 2 ** (failures - 1));
+      devWarn("autosave failed; retrying", { message: err?.message, backoff });
+      if (failures === 1) toast(userFacingError(err, "Could not save the comment — retrying"), 3200);
+      clearTimeout(timer);
+      timer = setTimeout(run, backoff);
+    } finally {
+      inflight -= 1;
     }
+  };
+  function run() {
+    clearTimeout(timer);
+    timer = null;
+    chain = chain.then(step, step);
+    return chain;
   }
+  return {
+    touch() {
+      dirty = true;
+      const now = performance.now();
+      if (!burstStartedAt) burstStartedAt = now;
+      const untilCeiling = burstStartedAt + maxWait - now;
+      clearTimeout(timer);
+      timer = setTimeout(run, Math.max(0, Math.min(wait, untilCeiling)));
+    },
+    flush: run,
+    cancel() {
+      clearTimeout(timer);
+      timer = null;
+      dirty = false;
+      burstStartedAt = 0;
+    },
+    get pending() {
+      return dirty || inflight > 0;
+    },
+  };
+}
+
+function beginEditorSession({ origin, annId = null, draft = null, text = "" }) {
+  const s = {
+    origin,                       // "draft" | "ann": decides what Enter does
+    annId,                        // null until a draft is created
+    draft,                        // the selection a draft will be created from
+    text,                         // what the person has typed: the only thing saved
+    saved: annId == null ? null : text,
+    caret: [text.length, text.length],
+    autosaver: null,
+  };
+  s.autosaver = createAutosaver({ save: () => saveEditorSession(s) });
+  editorSession = s;
+  syncPendingNote();
+  devLog("editor session: begin", { origin, annId });
+  return s;
+}
+
+async function endEditorSession({ save = true } = {}) {
+  const s = editorSession;
+  if (!s) return;
+  // Released first, so the caller may close the editor while the last save is
+  // still on its way; the save holds `s` and needs nothing else.
+  editorSession = null;
+  state.pendingNote = null;
+  if (save) await s.autosaver.flush();
+  else s.autosaver.cancel();
+  devLog("editor session: end", { origin: s.origin, annId: s.annId, saved: save });
+}
+
+function dropEditorSessionFor(ids) {
+  // The comment being edited was deleted (by the person, by undo, or on disk).
+  // Nothing is left to save it into, so the session goes without saving.
+  const s = editorSession;
+  if (!s || s.annId == null || !ids.includes(s.annId)) return;
+  s.autosaver.cancel();
+  editorSession = null;
+  state.pendingNote = null;
+}
+
+function sessionOwns(mode) {
+  // Whether the live session already owns what the editor is being asked to
+  // show. If it does, a render may touch the chrome and nothing else.
+  const s = editorSession;
+  if (!s || !isCommentEditorOpen()) return false;
+  if (mode === "draft") return s.annId == null && s.draft != null && s.draft === state.draft;
+  return s.annId != null && s.annId === state.focusId;
+}
+
+function syncPendingNote() {
+  // `state.pendingNote` is read in a dozen places as "the comment being
+  // edited". It is now derived from the session and written nowhere else.
+  const s = editorSession;
+  state.pendingNote = s && s.annId != null
+    ? {
+      id: s.annId,
+      ta: commentEditorTa,
+      flush: () => s.autosaver.flush(),
+      cardEl: commentsListEl.querySelector(`.comment-card[data-id="${s.annId}"]`),
+    }
+    : null;
+}
+
+function syncEditorCard(s) {
+  // The card behind the editor mirrors what is being typed, without a render.
+  const card = s.annId != null
+    ? commentsListEl.querySelector(`.comment-card[data-id="${s.annId}"]`)
+    : commentsListEl.querySelector(".comment-card.draft");
+  if (!card) return;
+  card.classList.toggle("deletable", s.annId != null && trimText(s.text) === "");
+  const preview = card.querySelector(".comment-editing-preview");
+  if (preview) preview.textContent = trimText(s.text) ? s.text : "Empty comment";
+}
+
+async function saveEditorSession(s) {
+  const text = s.text;
+  if (s.annId == null) {
+    if (!trimText(text)) return;                      // nothing worth creating yet
+    const draft = s.draft;
+    const rects = draft ? draftCommitRects(draft) : [];
+    if (!rects.length) {
+      devWarn("draft save skipped: no commit rects", { page: draft?.pageIndex });
+      return;
+    }
+    devLog("draft save: POST /api/annotations", { page: draft.pageIndex, contentLength: text.length });
+    draft.saving = true;
+    let created;
+    try {
+      created = await withSave(() => api("/api/annotations", {
+        method: "POST",
+        body: JSON.stringify({
+          page: draft.pageIndex,
+          span_ids: draft.spanIds,
+          rects,
+          color: draft.color,
+          content: text,
+        }),
+      }));
+    } finally {
+      draft.saving = false;
+    }
+    s.annId = created.id;
+    s.saved = text;
+    state.annotations.set(created.id, created);
+    if (!state.historyApplying) {
+      pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
+    }
+    if (state.draft === draft) {
+      // The draft is this annotation now. Its preview layer goes; the editor
+      // stays exactly as it is.
+      state.draft = null;
+      state.lastRenderedDraftKey = null;
+      clearPreviewLayers();
+    }
+    if (editorSession === s) {
+      state.focusId = created.id;
+      syncPendingNote();
+    }
+    if (created.save_path && state.doc) state.doc.save_path = created.save_path;
+    renderAllHighlights();
+    renderCommentsPane();
+    updateCommentSelectionUi();
+    void refreshPageBitmap(created.page);
+    emergencyBackup();
+    state.localDirty = s.text !== s.saved;
+    updateDocMeta();
+    toast(`Comment saved · ${basename(state.doc?.save_path || "")}`, 2800);
+    devLog("draft save: ok", { id: created.id });
+    return;
+  }
+  if (text === s.saved) return;
+  if (!state.annotations.has(s.annId)) {
+    devLog("comment save skipped: the annotation is gone", { id: s.annId });
+    return;
+  }
+  const oldId = s.annId;
+  const updated = await withSave(() => api(`/api/annotations/${oldId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ content: text }),
+  }));
+  applyAnnotationUpdate(updated);
+  if (updated.id !== oldId) adoptAnnotationId(oldId, updated.id);
+  s.annId = updated.id;
+  s.saved = text;
+  renderHighlights(updated.page);
+  if (editorSession === s) syncEditorCard(s);
+  void refreshPageBitmap(updated.page);
+  emergencyBackup();
+  state.localDirty = s.text !== s.saved;
+  updateDocMeta();
+}
+
+function onEditorInput() {
+  autosizeCommentEditorTa();
+  const s = editorSession;
+  if (!s) return;
+  s.text = commentEditorTa.value;
+  s.caret = [commentEditorTa.selectionStart, commentEditorTa.selectionEnd];
+  if (s.draft && state.draft === s.draft) state.draft.text = s.text;
+  state.localDirty = true;
+  updateDocMeta();
+  syncEditorCard(s);
+  if (s.annId != null) renderHighlights(state.annotations.get(s.annId)?.page);
+  // A draft is created on its first non-blank save; after that, clearing the
+  // text is an edit like any other and is saved.
+  if (s.annId != null || trimText(s.text)) s.autosaver.touch();
+}
+
+async function finishEditing({ returnToPdf = false } = {}) {
+  if (state.draft && !state.draft.committed) await settleDraft("shortcut");
+  else await blurComment();
+  if (returnToPdf) returnToReading();
+}
+
+function onEditorKeydown(ev) {
+  const s = editorSession;
+  if (!s) return;
+  if (ev.key === "Enter" && isModKey(ev)) {
+    ev.preventDefault();
+    void finishEditing({ returnToPdf: true });
+    return;
+  }
+  if (ev.key === "Escape") {
+    ev.preventDefault();
+    void finishEditing();
+    return;
+  }
+  // A new comment closes on Enter; an existing one takes a newline, as before.
+  if (ev.key === "Enter" && !ev.shiftKey && s.origin === "draft") {
+    ev.preventDefault();
+    void finishEditing();
+  }
+}
+
+function noteUserIntent(ev) {
+  // What counts as the person moving focus away: a pointer pressed anywhere
+  // but the editor, or a key that navigates. Typing does not count, so a save
+  // that fires mid-sentence can never be mistaken for a decision to leave.
+  if (ev.type === "pointerdown") {
+    if (ev.target === commentEditorTa) return;
+  } else {
+    const k = ev.key;
+    const navigates = k === "Tab" || k === "Escape" || k === "F6"
+      || (k === "Enter" && !ev.shiftKey) || ev.metaKey || ev.ctrlKey;
+    if (!navigates) return;
+  }
+  lastUserIntentAt = performance.now();
+}
+
+function wireCommentEditor() {
+  // Bound once, for the life of the page. Handlers used to be reassigned onto
+  // the textarea by whichever render ran last, and a render that ran at the
+  // wrong moment left it calling a card that no longer existed.
+  if (!commentEditorTa) return;
+  commentEditorTa.addEventListener("input", onEditorInput);
+  commentEditorTa.addEventListener("keydown", onEditorKeydown);
+  const keepCaret = () => {
+    if (editorSession) {
+      editorSession.caret = [commentEditorTa.selectionStart, commentEditorTa.selectionEnd];
+    }
+  };
+  commentEditorTa.addEventListener("select", keepCaret);
+  commentEditorTa.addEventListener("keyup", keepCaret);
+  commentEditorTa.addEventListener("mouseup", keepCaret);
+  document.addEventListener("pointerdown", noteUserIntent, true);
+  document.addEventListener("keydown", noteUserIntent, true);
+
+  commentEditorTa.addEventListener("blur", (ev) => {
+    const s = editorSession;
+    if (!s) return;
+    keepCaret();
+    void s.autosaver.flush();                          // leaving the field is a save point
+    if (ev.relatedTarget) return;                      // focus went where someone sent it
+    if (!document.hasFocus()) return;                  // the window lost focus, not the field
+    if (performance.now() - lastUserIntentAt < 400) return;   // a click or a key did this
+    // Nobody asked. Something in the page took the caret -- give it back, in
+    // the next frame, once whatever took it has finished.
+    requestAnimationFrame(() => {
+      if (editorSession !== s || !isCommentEditorOpen()) return;
+      const now = document.activeElement;
+      if (now && now !== document.body && now !== commentEditorTa) return;
+      devWarn("comment editor lost focus without a click or a key; restoring it");
+      commentEditorTa.focus({ preventScroll: true });
+      commentEditorTa.setSelectionRange(s.caret[0], s.caret[1]);
+    });
+  });
+
+  const flushNow = () => { void editorSession?.autosaver.flush(); };
+  window.addEventListener("pagehide", flushNow);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") flushNow();
+  });
 }
 
 // An annotation id of 0 is a real id. `state.focusId` is therefore compared
@@ -2136,12 +2446,16 @@ function isEditingCommentText() {
   );
 }
 
-function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeholder, foot, onInput, onKeydown }) {
+function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeholder, foot }) {
   if (!commentEditorEl || !commentEditorTa) return;
   if (mode === "draft") syncDraftTextFromEditor();
   const editorKey = mode === "draft" ? draftSelectionKey(state.draft) : String(state.focusId ?? title);
-  const same = state.commentEditor?.mode === mode && state.commentEditor?.key === editorKey;
-  const keepTyping = same && isEditingCommentText();
+  // Whether to leave the editor alone used to be decided by whether the
+  // textarea had focus at that instant -- so a render arriving during a
+  // momentary blur reset the text and moved the caret. It is decided by
+  // ownership now: if the live session already owns this comment, only the
+  // chrome is touched.
+  const keepTyping = sessionOwns(mode);
   if (keepTyping) {
     const chromeColor = mode === "draft"
       ? colorHex(state.draft?.color)
@@ -2159,6 +2473,9 @@ function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeh
     window.requestAnimationFrame(() => positionCommentEditor(anchorCard));
     return commentEditorTa;
   }
+  // A different comment: the previous session saves its own text and ends
+  // before this one's text is put in the field.
+  if (editorSession) void endEditorSession({ save: true });
   const text = mode === "draft" ? (state.draft?.text ?? value ?? "") : (value ?? "");
   const selStart = text.length;
   const selEnd = text.length;
@@ -2190,14 +2507,15 @@ function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeh
   mountPaletteSwatches(editorPalette, state.doc?.palette || {});
   commentEditorTa.placeholder = placeholder;
   commentEditorTa.value = text;
-  commentEditorTa.oninput = onInput ?? null;
-  commentEditorTa.onkeydown = onKeydown ?? null;
   autosizeCommentEditorTa();
   syncCommentDeleteButton(mode);
 
   commentEditorEl.hidden = false;
   commentEditorEl.setAttribute("aria-hidden", "false");
   state.commentEditor = { mode, key: editorKey, anchorCard };
+  beginEditorSession(mode === "draft"
+    ? { origin: "draft", draft: state.draft, text }
+    : { origin: "ann", annId: state.focusId, text });
 
   window.requestAnimationFrame(() => {
     autosizeCommentEditorTa();
@@ -2216,14 +2534,7 @@ function openCommentEditor({ mode, anchorCard, title, meta, quote, value, placeh
 function syncCommentEditor() {
   if (state.draft && !state.draft.committed) {
     syncDraftTextFromEditor();
-    const draftKey = draftSelectionKey(state.draft);
-    if (
-      state.commentEditor?.mode === "draft"
-      && state.commentEditor?.key === draftKey
-      && isEditingCommentText()
-    ) {
-      return;
-    }
+    if (sessionOwns("draft")) return;
     let card = commentsListEl.querySelector(".comment-card.draft");
     if (!card) {
       renderCommentsPane();
@@ -2238,17 +2549,6 @@ function syncCommentEditor() {
       value: state.draft.text ?? "",
       placeholder: "Write your comment…",
       foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line · ⌘/Ctrl+↵ returns to PDF",
-      onInput: () => {
-        syncDraftTextFromEditor();
-        autosizeCommentEditorTa();
-        if (!state.draft || state.draft.saving || !draftText()) return;
-        clearTimeout(draftSaveTimer);
-        draftSaveTimer = setTimeout(() => {
-          draftSaveTimer = null;
-          void onDraftEditorInputSave();
-        }, 400);
-      },
-      onKeydown: onDraftEditorKeydown,
     });
     state.draft.ta = ta;
     card.scrollIntoView({ block: "nearest", behavior: "auto" });
@@ -2256,14 +2556,7 @@ function syncCommentEditor() {
   }
 
   if (state.focusId != null && state.annotations.has(state.focusId)) {
-    const editorKey = String(state.focusId);
-    if (
-      state.commentEditor?.mode === "ann"
-      && state.commentEditor?.key === editorKey
-      && isEditingCommentText()
-    ) {
-      return;
-    }
+    if (sessionOwns("ann")) return;
     const ann = state.annotations.get(state.focusId);
     const card = commentsListEl.querySelector(`.comment-card[data-id="${state.focusId}"]`);
     if (!card || !ann) {
@@ -2279,140 +2572,11 @@ function syncCommentEditor() {
       value: editorValueFor(ann),
       placeholder: trimText(ann.content) ? "Comment" : "Empty comment",
       foot: "Autosaves as you type · Enter or Esc saves · Shift+↵ new line · ⌘/Ctrl+↵ returns to PDF",
-      onInput: state.pendingNote?.onInput,
-      onKeydown: state.pendingNote?.onKeydown,
     });
-    if (state.pendingNote) state.pendingNote.ta = ta;
     return;
   }
 
   closeCommentEditor();
-}
-
-async function onDraftEditorInputSave(trigger = "autosave") {
-  if (!state.draft) {
-    devLog("draft save skipped: no draft", { trigger });
-    return false;
-  }
-  if (state.draft.saving) {
-    devLog("draft save skipped: already saving", { trigger });
-    return false;
-  }
-  if (!commentEditorTa) {
-    devWarn("draft save skipped: no comment editor textarea", { trigger });
-    return false;
-  }
-  syncDraftTextFromEditor();
-  const text = draftText();
-  if (text === "") {
-    devLog("draft save skipped: empty text", { trigger });
-    return false;
-  }
-  const rects = draftCommitRects();
-  if (!rects.length) {
-    devWarn("draft save skipped: no commit rects", {
-      trigger,
-      displayRectCount: draftDisplayRects().length,
-      commitRectCount: state.draft.commitRects?.length ?? 0,
-      spanIds: state.draft.spanIds,
-      page: state.draft.pageIndex,
-    });
-    return false;
-  }
-  const { pageIndex: page, spanIds: ids, color } = state.draft;
-  const content = text ?? commentEditorTa.value;
-  const payload = { page, span_ids: ids, rects, color, content };
-  devLog("draft save: POST /api/annotations", { trigger, ...payload, contentLength: content.length });
-  state.draft.saving = true;
-  try {
-    const created = await withSave(() => api("/api/annotations", {
-      method: "POST",
-      body: JSON.stringify(payload),
-    }));
-    state.annotations.set(created.id, created);
-    if (!state.historyApplying) {
-      pushHistory(makeCreateHistoryEntry(cloneSnapshot(created), created.id));
-    }
-    const createdId = created.id;
-    // Declared out here on purpose: both are read after the block below, and
-    // declaring them inside it is what made every first save throw
-    // "savePath is not defined" the moment the annotation had been created.
-    let savePath = null;
-    let typedAhead = null;
-    await keepingCommentFocus(async () => {
-      state.draft = null;
-      state.lastRenderedDraftKey = null;
-      clearPreviewLayers();
-      renderAllHighlights();
-      await refreshPageBitmap(page);
-      syncDocFlags(await api("/api/document"));
-      emergencyBackup();
-      savePath = created.save_path || state.doc?.save_path;
-      if (savePath && state.doc) state.doc.save_path = savePath;
-      updateDocMeta();
-      typedAhead = commentEditorTa && commentEditorTa.value !== content
-        ? commentEditorTa.value
-        : null;
-      if (typedAhead !== null) {
-        created.content = typedAhead;
-        state.annotations.set(createdId, created);
-      }
-      // NOT closeCommentEditor(). The draft has become an annotation, which is
-      // bookkeeping; the person is still typing. Hand the open editor over to the
-      // new annotation, keeping the element, the focus and the caret, so the
-      // transition is invisible. Closing and reopening lost the keystrokes in
-      // between and put the caret at the end.
-      state.focusId = createdId;
-      if (state.commentEditor) {
-        state.commentEditor.mode = "ann";
-        state.commentEditor.key = String(createdId);
-      }
-      renderCommentsPane();
-      updateCommentSelectionUi();
-      flashHighlight(createdId);
-      commentsListEl
-        ?.querySelector(`.comment-card[data-id="${createdId}"]`)
-        ?.scrollIntoView({ block: "nearest", behavior: "auto" });
-    });
-    toast(`Comment saved · ${basename(savePath)}`, 2800);
-    devLog("draft save: ok", { trigger, id: createdId, page });
-    if (typedAhead !== null) {
-      devLog("draft save: flushing keystrokes typed during save", { id: createdId });
-      void patchAnnotation(createdId, { content: typedAhead }, { quiet: true });
-    }
-    return true;
-  } catch (err) {
-    // The success path clears `state.draft`, so anything that throws AFTER the
-    // save lands here with nothing to clear -- and this line then threw a
-    // second TypeError that replaced the first. The real failure never printed,
-    // which is why two readings of this function found nothing.
-    if (state.draft) {
-      state.draft.saving = false;
-      syncDraftTextFromEditor();
-    }
-    syncCommentEditor();
-    const msg = err.message || "";
-    devWarn("draft save: failed", { trigger, message: msg, page, span_ids: ids, rects, contentLength: content.length });
-    if (!/overlap/i.test(msg)) toast(msg || "Could not save highlight");
-    return false;
-  }
-}
-
-function onDraftEditorKeydown(ev) {
-  if (ev.key === "Enter" && isModKey(ev)) {
-    ev.preventDefault();
-    void settleDraft("shortcut").finally(returnToReading);
-    return;
-  }
-  if (ev.key === "Escape") {
-    ev.preventDefault();
-    void settleDraft();
-    return;
-  }
-  if (ev.key === "Enter" && !ev.shiftKey) {
-    ev.preventDefault();
-    void settleDraft();
-  }
 }
 
 function focusDraftNote() {
@@ -3339,7 +3503,6 @@ function renderCommentsPane() {
   }
   if (draftOpen) state.lastRenderedDraftKey = draftKey;
   else state.lastRenderedDraftKey = null;
-  state.pendingNote = null;
   commentsListEl.replaceChildren();
 
   const entries = [];
@@ -3364,28 +3527,7 @@ function renderCommentsPane() {
   }
   commentsCountEl.textContent = String(state.annotations.size);
 
-  if (keepFocus != null && state.annotations.has(keepFocus)) {
-    const card = commentsListEl.querySelector(`.comment-card[data-id="${keepFocus}"]`);
-    const ann = state.annotations.get(keepFocus);
-    if (card && ann) {
-      const editors = wireNoteEditing(ann, card);
-      state.pendingNote = {
-        id: keepFocus,
-        ta: commentEditorTa,
-        flush: editors.flush,
-        cardEl: card,
-        onInput: editors.onInput,
-        onKeydown: editors.onKeydown,
-      };
-      // The card these handlers close over has just been rebuilt. An editor
-      // that is already open keeps its element, so it would otherwise go on
-      // calling the handlers of the card that no longer exists.
-      if (isCommentEditorOpen() && commentEditorTa) {
-        commentEditorTa.oninput = editors.onInput;
-        commentEditorTa.onkeydown = editors.onKeydown;
-      }
-    }
-  }
+  syncPendingNote();
 
   syncCommentEditor();
   updateCommentSelectionUi();
@@ -3553,9 +3695,6 @@ function showDraft(
     if (Number(idx) !== pageIndex) m.draftLayer?.replaceChildren();
   }
 
-  clearTimeout(draftSaveTimer);
-  draftSaveTimer = null;
-
   state.textSelection = null;
   state.draft = {
     pageIndex,
@@ -3646,8 +3785,7 @@ function focusAnnotation(id, {
 }
 
 async function blurComment() {
-  if (state.pendingNote?.flush) await state.pendingNote.flush();
-  state.pendingNote = null;
+  await endEditorSession({ save: true });
   state.focusId = null;
   closeCommentEditor();
   renderAllHighlights();
@@ -3656,60 +3794,6 @@ async function blurComment() {
 
 async function dismissComment() {
   await blurComment();
-}
-
-function wireNoteEditing(ann, cardEl) {
-  let timer;
-  const ta = () => commentEditorTa;
-  const flush = async () => {
-    clearTimeout(timer);
-    const text = ta()?.value ?? "";
-    if (ann.content === text) {
-      state.localDirty = false;
-      updateDocMeta();
-      return;
-    }
-    ann.content = text;
-    // The id this closure captured is the id the annotation had when the card
-    // was built. A save renumbers the PDF's xrefs, so by the second flush that
-    // id is gone and the patch went to a dead annotation. Ask for the current
-    // one, and keep the captured object in step with the answer.
-    const current = state.pendingNote?.id ?? ann.id;
-    const updated = await patchAnnotation(current, { content: text }, { quiet: true });
-    if (updated?.id != null) ann.id = updated.id;
-    state.localDirty = false;
-    updateDocMeta();
-  };
-
-  const onInput = () => {
-    autosizeCommentEditorTa();
-    state.localDirty = true;
-    updateDocMeta();
-    renderHighlights(ann.page);
-    const text = ta()?.value ?? "";
-    cardEl?.classList.toggle("deletable", trimText(text) === "");
-    const preview = cardEl?.querySelector(".comment-editing-preview");
-    if (preview) preview.textContent = trimText(text) ? text : "Empty comment";
-    clearTimeout(timer);
-    timer = setTimeout(flush, 280);
-  };
-
-  const onKeydown = (ev) => {
-    if (ev.key === "Enter" && isModKey(ev)) {
-      ev.preventDefault();
-      flush().finally(() => {
-        blurComment().finally(returnToReading);
-      });
-      return;
-    }
-    if (ev.key === "Escape") {
-      ev.preventDefault();
-      flush().finally(() => blurComment());
-      return;
-    }
-  };
-
-  return { flush, onInput, onKeydown };
 }
 
 function cloneSnapshot(ann) {
@@ -3898,26 +3982,24 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
   // branch below rebuilt the pane under it.
   const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
   applyAnnotationUpdate(updated);
-  await keepingCommentFocus(async () => {
-    renderHighlights(updated.page);
-    const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
-    const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
-    if (colorOnly) {
-      refreshAnnotationChrome(updated.id);
-      updatePaletteSelection(updated.color);
-    } else if (keepEditor) {
-      refreshAnnotationChrome(updated.id);
-      updatePaletteSelection(updated.color);
-      await refreshPageBitmap(updated.page);
-    } else if (!editingThis) {
-      await refreshPageBitmap(updated.page);
-      renderCommentsPane();
-    } else if (!colorOnly) {
-      await refreshPageBitmap(updated.page);
-    }
-    emergencyBackup();
-    updateDocMeta();
-  });
+  renderHighlights(updated.page);
+  const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
+  const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
+  if (colorOnly) {
+    refreshAnnotationChrome(updated.id);
+    updatePaletteSelection(updated.color);
+  } else if (keepEditor) {
+    refreshAnnotationChrome(updated.id);
+    updatePaletteSelection(updated.color);
+    await refreshPageBitmap(updated.page);
+  } else if (!editingThis) {
+    await refreshPageBitmap(updated.page);
+    renderCommentsPane();
+  } else if (!colorOnly) {
+    await refreshPageBitmap(updated.page);
+  }
+  emergencyBackup();
+  updateDocMeta();
   if (!quiet && !colorOnly) toast("Saved");
   return updated;
 }
@@ -3943,7 +4025,8 @@ async function deleteAnnotationsById(ids, { quiet = false } = {}) {
     if (state.locateId === id) state.locateId = null;
     if (state.lastSelectedCommentId === id) state.lastSelectedCommentId = null;
   }
-  state.pendingNote = null;
+  dropEditorSessionFor(unique);
+  syncPendingNote();
   closeCommentEditor();
   await refreshAnnotationViews(pages);
   if (!quiet) toast(`Removed ${unique.length} comment${unique.length === 1 ? "" : "s"}`);
@@ -4454,6 +4537,7 @@ function mergeAnnotationsFromServer(list) {
     const match = list.find((a) => annotKey(a) === prevKey);
     state.focusId = match ? match.id : null;
     if (!match) {
+      dropEditorSessionFor([prevFocus]);
       state.pendingNote = null;
     } else if (state.pendingNote && state.pendingNote.id !== match.id) {
       adoptAnnotationId(state.pendingNote.id, match.id);
@@ -4884,6 +4968,7 @@ async function init() {
       renderCommentsPane,
       patchAnnotation,
       isEditingCommentText,
+      session: () => editorSession,
     };
   }
   setServerRevision(state.doc.revision ?? 0);
@@ -5038,6 +5123,7 @@ async function init() {
   bindGlobalSelectionHandlers();
   wireZoomControls();
   wireFind();
+  wireCommentEditor();
   viewerEl.addEventListener("scroll", () => {
     scheduleStubSync();
     scheduleNavStateReplace();

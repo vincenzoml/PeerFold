@@ -265,9 +265,17 @@ def _annotation_overlaps_rects(ann_rects: list[list[float]], new_rects: list[lis
 
 
 def import_fitz():
-    import fitz  # PyMuPDF
+    """The PyMuPDF module, under the name it answers to now.
 
-    return fitz
+    Importing it as `fitz` still works and prints a deprecation warning on every
+    start, which is the first thing a reviewer sees in the terminal. The module
+    has been importable as `pymupdf` since 1.24.3, which is the floor in
+    pyproject.toml. The name of this function is left alone: it is used in a
+    dozen places and the module is passed around as `fitz` there.
+    """
+    import pymupdf
+
+    return pymupdf
 
 
 def sanitize_reviewer(name: str) -> str:

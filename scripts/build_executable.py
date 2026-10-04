@@ -25,9 +25,9 @@ def artifact_in_appdir(app_dir: Path, name: str) -> Path:
 def pyinstaller_extras() -> list[str]:
     return [
         "--hidden-import",
-        "fitz",
+        "pymupdf",
         "--collect-submodules",
-        "fitz",
+        "pymupdf",
         "--hidden-import",
         "webview",
         "--collect-submodules",

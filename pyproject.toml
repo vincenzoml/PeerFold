@@ -20,7 +20,7 @@ classifiers = [
 ]
 dependencies = [
     "certifi>=2024.2",
-    "pymupdf>=1.24.0",
+    "pymupdf>=1.24.3",   # first release importable as `pymupdf` rather than `fitz`
     "pywebview>=5.3",
 ]
 

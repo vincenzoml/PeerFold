@@ -2055,6 +2055,14 @@ function onCommentDeleteClick() {
 
 function closeCommentEditor() {
   if (!commentEditorEl || commentEditorEl.hidden) return;
+  // NEVER under the person's hands. Hiding the element blurs it, which is how
+  // a comment being typed lost the caret; the ways out of an editor that the
+  // person asks for -- Enter, Escape, clicking elsewhere -- all blur it first,
+  // so this refuses nothing they actually requested.
+  if (isEditingCommentText()) {
+    devLog("closeCommentEditor refused: the comment has the caret");
+    return;
+  }
   if (state.draft && !state.draft.committed) syncDraftTextFromEditor();
   disarmCommentDelete();
   unbindCommentEditorReposition();
@@ -2116,6 +2124,9 @@ async function keepingCommentFocus(run) {
     return await run();
   } finally {
     if (typing && ta && document.activeElement !== ta) {
+      devWarn("comment focus was taken by a redraw; putting it back", {
+        took: document.activeElement?.id || document.activeElement?.tagName,
+      });
       ta.focus({ preventScroll: true });
       ta.setSelectionRange(start, end);
     }
@@ -3653,7 +3664,13 @@ function wireNoteEditing(ann, cardEl) {
       return;
     }
     ann.content = text;
-    await patchAnnotation(ann.id, { content: text }, { quiet: true });
+    // The id this closure captured is the id the annotation had when the card
+    // was built. A save renumbers the PDF's xrefs, so by the second flush that
+    // id is gone and the patch went to a dead annotation. Ask for the current
+    // one, and keep the captured object in step with the answer.
+    const current = state.pendingNote?.id ?? ann.id;
+    const updated = await patchAnnotation(current, { content: text }, { quiet: true });
+    if (updated?.id != null) ann.id = updated.id;
     state.localDirty = false;
     updateDocMeta();
   };
@@ -3869,11 +3886,15 @@ async function patchAnnotation(id, patch, { quiet = false } = {}) {
     method: "PATCH",
     body: JSON.stringify(patch),
   }));
+  // Before applyAnnotationUpdate, which is where the id moves: afterwards
+  // `state.focusId` is the new id and `id` is the old one, so this comparison
+  // said "not editing this" for the very comment being typed into, and the
+  // branch below rebuilt the pane under it.
+  const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
   applyAnnotationUpdate(updated);
   await keepingCommentFocus(async () => {
     renderHighlights(updated.page);
     const colorOnly = Object.keys(patch).length === 1 && patch.color != null;
-    const editingThis = state.focusId === id && (state.pendingNote || isCommentEditorActive());
     const keepEditor = colorOnly && (editingThis || state.selectedCommentIds.has(id));
     if (colorOnly) {
       refreshAnnotationChrome(updated.id);

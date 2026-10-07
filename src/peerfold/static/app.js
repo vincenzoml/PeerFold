@@ -2785,26 +2785,103 @@ function wheelStepFactor(deltaY, deltaMode) {
 // Live zoom. Setting the CSS zoom lays out every page again, which is too slow
 // to do on each event of a pinch: the view lags behind the fingers and
 // stutters. So during a gesture the committed zoom stays put and the pages'
-// container is scaled by a transform around the point under the fingers, at
-// most once per frame; when the gesture pauses, the zoom is committed once and
-// the scroll position chosen so that the same point stays under the fingers.
+// container is moved and scaled by a transform, at most once per frame; when
+// the gesture pauses, the zoom is committed once.
+//
+// The transform does not simply scale around the fingers: it shows the page
+// where the committed layout WILL put it -- centred once it is narrower than
+// the window, held inside the scrollable range at the edges -- so committing
+// changes nothing on screen. Scaling around the fingers and correcting at the
+// end is what made the page jump when a pinch ended.
+
+// The page under a screen point, or the nearest one: the reference the live
+// zoom keeps in place.
+function pageNearPoint(x, y) {
+  const hit = document.elementFromPoint(x, y)?.closest?.("section.page");
+  if (hit && pagesEl.contains(hit)) return hit;
+  let best = null;
+  let bestDist = Infinity;
+  for (const el of pagesEl.querySelectorAll("section.page")) {
+    const r = el.getBoundingClientRect();
+    const d = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+    if (d < bestDist) { best = el; bestDist = d; }
+  }
+  return best;
+}
+
+function liveZoomStart(anchorX, anchorY) {
+  const ref = pageNearPoint(anchorX, anchorY);
+  if (!ref) return null;
+  const r0 = ref.getBoundingClientRect();
+  const view = viewerEl.getBoundingClientRect();
+  return {
+    zoom: state.zoom,
+    z0: state.zoom,
+    ref,
+    r0,
+    fx: r0.width ? (anchorX - r0.left) / r0.width : 0.5,
+    fy: r0.height ? (anchorY - r0.top) / r0.height : 0.5,
+    anchorX,
+    anchorY,
+    view,
+    box: pagesViewportEl.getBoundingClientRect(),
+    vw: viewerEl.clientWidth,
+    vh: viewerEl.clientHeight,
+    // Page top in scroll-content coordinates at the starting zoom.
+    top0: r0.top - view.top - viewerEl.clientTop + viewerEl.scrollTop,
+    minWidth: parseFloat(pagesEl.style.minWidth) || 0,
+    raf: 0,
+    timer: 0,
+  };
+}
+
+// Where the reference page will be on screen, and the scroll that puts it
+// there, once zoom z is committed.
+function liveZoomPredict(live, z) {
+  const k = z / live.z0;
+  const vl = live.view.left + viewerEl.clientLeft;
+  const vt = live.view.top + viewerEl.clientTop;
+  const pageW = live.r0.width * k;
+  const pageH = live.r0.height * k;
+  const contW = Math.max(live.vw, live.minWidth * z);
+  const pageLeftC = (contW - pageW) / 2;
+  const sx = Math.min(Math.max(0, contW - live.vw),
+    Math.max(0, pageLeftC - (live.anchorX - vl - live.fx * pageW)));
+  const pageTopC = live.top0 * k;
+  const contH = (state.pagesTotalHeight || 0) * z;
+  const sy = Math.min(Math.max(0, contH - live.vh),
+    Math.max(0, pageTopC - (live.anchorY - vt - live.fy * pageH)));
+  return { left: vl + pageLeftC - sx, top: vt + pageTopC - sy, sx, sy, k };
+}
+
+function liveZoomRender(live) {
+  const p = liveZoomPredict(live, live.zoom);
+  const tx = p.left - live.box.left - (live.r0.left - live.box.left) * p.k;
+  const ty = p.top - live.box.top - (live.r0.top - live.box.top) * p.k;
+  pagesViewportEl.style.transform = `translate(${tx}px, ${ty}px) scale(${p.k})`;
+  if (zoomLabelEl) zoomLabelEl.textContent = `${Math.round(live.zoom * 100)}%`;
+}
+
 function liveZoomTo(next, anchorX, anchorY) {
   if (!viewerEl) return;
   const target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
   let live = state.liveZoom;
   if (!live) {
+    live = liveZoomStart(anchorX, anchorY);
+    if (!live) { setZoom(target, anchorX, anchorY); return; }
     markZoomGestureActive();
-    const box = pagesViewportEl.getBoundingClientRect();
-    live = state.liveZoom = {
-      zoom: state.zoom,
-      anchorX,
-      anchorY,
-      focus: zoomContentPoint(anchorX, anchorY),
-      raf: 0,
-      timer: 0,
-    };
-    // In the container's own box, which is not zoomed, so plain pixels.
-    pagesViewportEl.style.transformOrigin = `${anchorX - box.left}px ${anchorY - box.top}px`;
+    state.liveZoom = live;
+    // A transform shrinks the scrollable area as much as it shrinks the pages,
+    // and the browser then clamps the scroll position in the middle of the
+    // gesture, shifting the view. A one-pixel marker at the far corner keeps
+    // the scrollable area as it was until the zoom is committed.
+    if (getComputedStyle(viewerEl).position === "static") viewerEl.style.position = "relative";
+    live.spacer = document.createElement("div");
+    live.spacer.setAttribute("aria-hidden", "true");
+    live.spacer.style.cssText = "position:absolute;width:1px;height:1px;pointer-events:none;"
+      + `left:${viewerEl.scrollWidth - 1}px;top:${viewerEl.scrollHeight - 1}px;`;
+    viewerEl.appendChild(live.spacer);
+    pagesViewportEl.style.transformOrigin = "0 0";
     pagesViewportEl.style.willChange = "transform";
   }
   live.zoom = target;
@@ -2812,8 +2889,7 @@ function liveZoomTo(next, anchorX, anchorY) {
     live.raf = requestAnimationFrame(() => {
       if (state.liveZoom !== live) return;
       live.raf = 0;
-      pagesViewportEl.style.transform = `scale(${live.zoom / state.zoom})`;
-      if (zoomLabelEl) zoomLabelEl.textContent = `${Math.round(live.zoom * 100)}%`;
+      liveZoomRender(live);
     });
   }
   clearTimeout(live.timer);
@@ -2830,12 +2906,22 @@ function commitLiveZoom() {
   cancelAnimationFrame(live.raf);
   clearTimeout(live.timer);
   state.liveZoom = null;
+  const p = liveZoomPredict(live, live.zoom);
+  live.spacer?.remove();
   pagesViewportEl.style.transform = "";
   pagesViewportEl.style.transformOrigin = "";
   pagesViewportEl.style.willChange = "";
   state.zoom = live.zoom;
   applyZoom();
-  scrollToContentPoint(live.anchorX, live.anchorY, live.focus.x, live.focus.y, live.zoom);
+  viewerEl.scrollLeft = p.sx;
+  viewerEl.scrollTop = p.sy;
+  // Absorb whatever the model of the layout got wrong (rounding, a page that
+  // is not the widest), so the page ends exactly where the gesture showed it.
+  if (live.ref.isConnected) {
+    const after = live.ref.getBoundingClientRect();
+    viewerEl.scrollLeft += after.left - p.left;
+    viewerEl.scrollTop += after.top - p.top;
+  }
   markZoomGestureEnd();
   scheduleNavStateReplace();
 }
@@ -2959,6 +3045,16 @@ function buildPageLayout() {
   state.pagesTotalHeight = y + PAGE_PAD_BOTTOM - PAGE_GAP;
   pagesEl.style.position = "relative";
   pagesEl.style.minHeight = `${state.pagesTotalHeight}px`;
+  // Pages are centred (left: 50%, translateX(-50%)). In a container narrower
+  // than the page, half of the overflow goes to the left, where no scrollbar
+  // reaches: zoomed in, the left edge of the page could not be seen, and a zoom
+  // could not keep the point under the fingers in place. A container at least
+  // as wide as the widest page puts all the overflow on the scrollable side.
+  let widest = 0;
+  for (let i = 0; i < state.doc.page_sizes.length; i += 1) {
+    widest = Math.max(widest, pageRenderWidth(i));
+  }
+  pagesEl.style.minWidth = `${widest + 2 * PAGE_GAP}px`;
   applyZoom();
 }
 

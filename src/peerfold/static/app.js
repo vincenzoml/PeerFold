@@ -53,6 +53,7 @@ const state = {
   pendingStubRemoval: new Map(),
   zooming: false,
   zoomEndTimer: null,
+  liveZoom: null,
   gestureActive: false,
   gestureBaseZoom: 1,
   highlightGesture: null,
@@ -74,11 +75,19 @@ const syncChannel = typeof BroadcastChannel !== "undefined"
   ? new BroadcastChannel("peerfold-sync")
   : null;
 
-const ZOOM_MIN = 0.55;
-const ZOOM_MAX = 2.75;
+// Low enough to see several whole pages side by side, as Preview does.
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 6;
 const ZOOM_STEP = 1.12;
-const WHEEL_ZOOM_GAIN = 0.0017;
-const WHEEL_ZOOM_STEP_MAX = 0.014;
+// Ctrl-wheel (a trackpad pinch in Chromium, or a mouse wheel with Ctrl) zooms
+// by exp(-deltaY * gain): proportional to the movement, so a slow pinch is slow
+// and a fast one is fast. The cap only tames a mouse wheel's 100-pixel notches.
+const WHEEL_ZOOM_GAIN = 0.01;
+const WHEEL_ZOOM_STEP_MAX = 0.2;
+// While a gesture is under way the pages are scaled by a GPU transform; the
+// real zoom, which lays every page out again, is committed once the gesture
+// has paused this long.
+const LIVE_ZOOM_COMMIT_MS = 140;
 const PAGE_GAP = 24;
 const PAGE_PAD_TOP = 28;
 const PAGE_PAD_BOTTOM = 48;
@@ -2737,6 +2746,7 @@ function scrollToContentPoint(clientX, clientY, contentX, contentY, zoom) {
 }
 
 function setZoom(next, anchorX, anchorY, { deferEnd = true } = {}) {
+  commitLiveZoom();
   const prev = state.zoom;
   const clamped = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
   if (Math.abs(clamped - prev) < 0.0001) return;
@@ -2769,7 +2779,65 @@ function normalizeWheelDelta(deltaY, deltaMode) {
 function wheelStepFactor(deltaY, deltaMode) {
   const dy = normalizeWheelDelta(deltaY, deltaMode);
   const change = Math.max(-WHEEL_ZOOM_STEP_MAX, Math.min(WHEEL_ZOOM_STEP_MAX, -dy * WHEEL_ZOOM_GAIN));
-  return 1 + change;
+  return Math.exp(change);
+}
+
+// Live zoom. Setting the CSS zoom lays out every page again, which is too slow
+// to do on each event of a pinch: the view lags behind the fingers and
+// stutters. So during a gesture the committed zoom stays put and the pages'
+// container is scaled by a transform around the point under the fingers, at
+// most once per frame; when the gesture pauses, the zoom is committed once and
+// the scroll position chosen so that the same point stays under the fingers.
+function liveZoomTo(next, anchorX, anchorY) {
+  if (!viewerEl) return;
+  const target = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
+  let live = state.liveZoom;
+  if (!live) {
+    markZoomGestureActive();
+    const box = pagesViewportEl.getBoundingClientRect();
+    live = state.liveZoom = {
+      zoom: state.zoom,
+      anchorX,
+      anchorY,
+      focus: zoomContentPoint(anchorX, anchorY),
+      raf: 0,
+      timer: 0,
+    };
+    // In the container's own box, which is not zoomed, so plain pixels.
+    pagesViewportEl.style.transformOrigin = `${anchorX - box.left}px ${anchorY - box.top}px`;
+    pagesViewportEl.style.willChange = "transform";
+  }
+  live.zoom = target;
+  if (!live.raf) {
+    live.raf = requestAnimationFrame(() => {
+      if (state.liveZoom !== live) return;
+      live.raf = 0;
+      pagesViewportEl.style.transform = `scale(${live.zoom / state.zoom})`;
+      if (zoomLabelEl) zoomLabelEl.textContent = `${Math.round(live.zoom * 100)}%`;
+    });
+  }
+  clearTimeout(live.timer);
+  live.timer = setTimeout(commitLiveZoom, LIVE_ZOOM_COMMIT_MS);
+}
+
+function liveZoomBase() {
+  return state.liveZoom ? state.liveZoom.zoom : state.zoom;
+}
+
+function commitLiveZoom() {
+  const live = state.liveZoom;
+  if (!live) return;
+  cancelAnimationFrame(live.raf);
+  clearTimeout(live.timer);
+  state.liveZoom = null;
+  pagesViewportEl.style.transform = "";
+  pagesViewportEl.style.transformOrigin = "";
+  pagesViewportEl.style.willChange = "";
+  state.zoom = live.zoom;
+  applyZoom();
+  scrollToContentPoint(live.anchorX, live.anchorY, live.focus.x, live.focus.y, live.zoom);
+  markZoomGestureEnd();
+  scheduleNavStateReplace();
 }
 
 function markZoomGestureActive() {
@@ -2816,32 +2884,31 @@ function wireZoomControls() {
     if (!ev.ctrlKey && !ev.metaKey) return;
     if (state.gestureActive) return;
     ev.preventDefault();
-    zoomBy(wheelStepFactor(ev.deltaY, ev.deltaMode), ev.clientX, ev.clientY);
+    liveZoomTo(liveZoomBase() * wheelStepFactor(ev.deltaY, ev.deltaMode), ev.clientX, ev.clientY);
   }, { passive: false });
 
   viewerEl.addEventListener("gesturestart", (ev) => {
     ev.preventDefault();
     state.gestureActive = true;
-    state.gestureBaseZoom = state.zoom;
-    markZoomGestureActive();
+    state.gestureBaseZoom = liveZoomBase();
   }, { passive: false });
 
   viewerEl.addEventListener("gesturechange", (ev) => {
     ev.preventDefault();
-    setZoom(state.gestureBaseZoom * ev.scale, ev.clientX, ev.clientY);
+    liveZoomTo(state.gestureBaseZoom * ev.scale, ev.clientX, ev.clientY);
   }, { passive: false });
 
   viewerEl.addEventListener("gestureend", (ev) => {
     ev.preventDefault();
     state.gestureActive = false;
-    markZoomGestureEnd();
+    commitLiveZoom();
   }, { passive: false });
 
   viewerEl.addEventListener("touchstart", (ev) => {
     if (ev.touches.length === 2) {
       state.pinch = {
         distance: touchDistance(ev.touches),
-        zoom: state.zoom,
+        zoom: liveZoomBase(),
         x: (ev.touches[0].clientX + ev.touches[1].clientX) / 2,
         y: (ev.touches[0].clientY + ev.touches[1].clientY) / 2,
       };
@@ -2851,16 +2918,15 @@ function wireZoomControls() {
   viewerEl.addEventListener("touchmove", (ev) => {
     if (!state.pinch || ev.touches.length !== 2) return;
     ev.preventDefault();
-    markZoomGestureActive();
     const dist = touchDistance(ev.touches);
     const x = (ev.touches[0].clientX + ev.touches[1].clientX) / 2;
     const y = (ev.touches[0].clientY + ev.touches[1].clientY) / 2;
-    setZoom(state.pinch.zoom * (dist / state.pinch.distance), x, y);
+    liveZoomTo(state.pinch.zoom * (dist / state.pinch.distance), x, y);
   }, { passive: false });
 
   viewerEl.addEventListener("touchend", () => {
     state.pinch = null;
-    markZoomGestureEnd();
+    commitLiveZoom();
   });
 }
 

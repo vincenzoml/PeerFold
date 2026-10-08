@@ -3658,6 +3658,7 @@ function buildCommentCard(ann) {
       return;
     }
     if (editing) {
+      centerAnnotation(ann);
       commentEditorTa?.focus();
       return;
     }
@@ -3670,7 +3671,7 @@ function buildCommentCard(ann) {
     if (!ev.target.closest(".comment-edit-hit")) return;
     ev.stopPropagation();
     settleDraftSync();
-    focusAnnotation(ann.id, { edit: true });
+    focusAnnotation(ann.id, { edit: true, center: true });
   });
 
   return card;

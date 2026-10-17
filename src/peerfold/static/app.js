@@ -107,6 +107,7 @@ const COMMENTS_H_MAX = 720;
 const LS_COMMENTS_W = "peerfold-comments-w";
 const LS_COMMENTS_H = "peerfold-comments-h";
 const LS_COMMENTS_COLLAPSED = "peerfold-comments-collapsed";
+const LS_VIEW_MODE = "peerfold-view-mode";
 
 const LINE_Y_TOL = 4;
 const DRAG_THRESHOLD = 4;
@@ -2950,6 +2951,154 @@ function touchDistance(touches) {
   return Math.hypot(dx, dy);
 }
 
+// View mode. "continuous" is the scrolled stack of pages; "slides" shows one
+// page at a time, fitted to the viewer, and steps page by page with the keys
+// and the wheel -- for reading a beamer deck. The layout is the same in both
+// modes: slides only fits the zoom, scrolls to the current page and hides the
+// others (visibility, so offsets and lazy loading are untouched).
+const SLIDE_WHEEL_THRESHOLD = 40;
+const SLIDE_WHEEL_COOLDOWN_MS = 350;
+
+function loadViewMode() {
+  try {
+    return localStorage.getItem(LS_VIEW_MODE) === "slides" ? "slides" : "continuous";
+  } catch {
+    return "continuous";
+  }
+}
+
+function inSlideMode() {
+  return state.viewMode === "slides";
+}
+
+function currentPageIndex() {
+  if (!state.doc?.pages || !state.pageOffsets?.length) return 0;
+  const zoom = state.zoom || 1;
+  const centre = (viewerEl.scrollTop + viewerEl.clientHeight / 2) / zoom;
+  let best = 0;
+  let bestDist = Infinity;
+  for (let i = 0; i < state.doc.pages; i += 1) {
+    const mid = state.pageOffsets[i] + pageRenderHeight(i) / 2;
+    const d = Math.abs(mid - centre);
+    if (d < bestDist) {
+      bestDist = d;
+      best = i;
+    }
+  }
+  return best;
+}
+
+function slideFitZoom(index) {
+  const w = pageRenderWidth(index);
+  const h = pageRenderHeight(index);
+  const zw = (viewerEl.clientWidth - 2 * PAGE_GAP) / w;
+  const zh = (viewerEl.clientHeight - PAGE_GAP) / h;
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Math.min(zw, zh)));
+}
+
+function renderSlideVisibility() {
+  if (!state.slideStyleEl) {
+    state.slideStyleEl = document.createElement("style");
+    document.head.appendChild(state.slideStyleEl);
+  }
+  state.slideStyleEl.textContent = inSlideMode()
+    ? `#pages section.page:not([data-page="${state.slideIndex}"]) { visibility: hidden; }`
+    : "";
+}
+
+// Top-aligned, not centred: the first page cannot be centred (no scroll room
+// above it), and a deck should not jump between first and second slide.
+function centreSlide(index) {
+  const zoom = state.zoom || 1;
+  viewerEl.scrollTop = Math.max(0, state.pageOffsets[index] * zoom - PAGE_GAP / 2);
+  viewerEl.scrollLeft = Math.max(0, (viewerEl.scrollWidth - viewerEl.clientWidth) / 2);
+}
+
+async function showSlide(index, { fit = true } = {}) {
+  if (!state.doc?.pages || !state.pageOffsets?.length) return;
+  const i = Math.max(0, Math.min(state.doc.pages - 1, index));
+  state.slideIndex = i;
+  if (fit) setZoom(slideFitZoom(i), null, null, { deferEnd: false });
+  renderSlideVisibility();
+  ensurePageStub(i);
+  centreSlide(i);
+  scheduleStubSync();
+  if (!isPageMounted(i)) await loadPage(i);
+}
+
+function stepSlide(delta) {
+  void showSlide((state.slideIndex ?? currentPageIndex()) + delta);
+}
+
+function setViewMode(mode, { initial = false } = {}) {
+  const next = mode === "slides" ? "slides" : "continuous";
+  const page = currentPageIndex();
+  state.viewMode = next;
+  try {
+    localStorage.setItem(LS_VIEW_MODE, next);
+  } catch { /* storage may be unavailable */ }
+  viewerEl.classList.toggle("slides", next === "slides");
+  const btn = $("#view-mode-btn");
+  if (btn) {
+    btn.setAttribute("aria-pressed", next === "slides" ? "true" : "false");
+    btn.textContent = next === "slides" ? "Slides" : "Scroll";
+  }
+  if (next === "slides") {
+    void showSlide(page);
+  } else {
+    renderSlideVisibility();
+    if (!initial && state.doc?.pages && state.pageOffsets.length) {
+      const r = viewerEl.getBoundingClientRect();
+      setZoom(1, r.left + r.width / 2, r.top + r.height / 2, { deferEnd: false });
+      void navigateToPdfDest(page, pageRenderHeight(page) / 2 / state.doc.render_scale, { behavior: "auto" });
+    }
+  }
+}
+
+function onSlideKeydown(ev) {
+  if (!inSlideMode() || isModKey(ev) || ev.altKey || isEditableTarget(ev)) return false;
+  if (state.draft) return false;
+  const k = ev.key;
+  let delta = null;
+  if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || (k === " " && !ev.shiftKey)) delta = 1;
+  else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp" || (k === " " && ev.shiftKey)) delta = -1;
+  if (delta != null) {
+    ev.preventDefault();
+    stepSlide(delta);
+    return true;
+  }
+  if (k === "Home" || k === "End") {
+    ev.preventDefault();
+    void showSlide(k === "Home" ? 0 : state.doc.pages - 1);
+    return true;
+  }
+  return false;
+}
+
+function wireViewMode() {
+  state.viewMode = loadViewMode();
+  state.slideWheel = { acc: 0, until: 0 };
+  $("#view-mode-btn")?.addEventListener("click", () => {
+    setViewMode(inSlideMode() ? "continuous" : "slides");
+  });
+  viewerEl.addEventListener("wheel", (ev) => {
+    if (!inSlideMode() || ev.ctrlKey || ev.metaKey) return;
+    ev.preventDefault();
+    const w = state.slideWheel;
+    const now = performance.now();
+    if (now < w.until) return;
+    w.acc += normalizeWheelDelta(ev.deltaY || ev.deltaX, ev.deltaMode);
+    if (Math.abs(w.acc) < SLIDE_WHEEL_THRESHOLD) return;
+    stepSlide(w.acc > 0 ? 1 : -1);
+    w.acc = 0;
+    w.until = now + SLIDE_WHEEL_COOLDOWN_MS;
+  }, { passive: false });
+  window.addEventListener("resize", () => {
+    if (inSlideMode()) void showSlide(state.slideIndex ?? currentPageIndex());
+  });
+  setViewMode(state.viewMode, { initial: true });
+}
+
 function wireZoomControls() {
   applyZoom();
 
@@ -3056,6 +3205,7 @@ function buildPageLayout() {
   }
   pagesEl.style.minWidth = `${widest + 2 * PAGE_GAP}px`;
   applyZoom();
+  if (inSlideMode()) requestAnimationFrame(() => void showSlide(state.slideIndex ?? 0));
 }
 
 function pagesInViewport() {
@@ -3249,6 +3399,7 @@ function scheduleStubSync() {
 }
 
 async function navigateToPdfDest(pageIndex, yPdf = 0, { behavior = "smooth" } = {}) {
+  if (inSlideMode()) return showSlide(pageIndex, { fit: false });
   ensurePageStub(pageIndex);
   scheduleStubSync();
   if (!isPageMounted(pageIndex)) {
@@ -5202,6 +5353,7 @@ async function init() {
 
   window.addEventListener("keydown", (ev) => {
     if (routeDraftTyping(ev)) return;
+    if (onSlideKeydown(ev)) return;
     if (isModKey(ev) && ev.key.toLowerCase() === "z") {
       if (isEditableTarget(ev)) return;
       const redo = ev.shiftKey;
@@ -5310,6 +5462,7 @@ async function init() {
   wireWorkspaceLayout();
   bindGlobalSelectionHandlers();
   wireZoomControls();
+  wireViewMode();
   wireFind();
   wireCommentEditor();
   viewerEl.addEventListener("scroll", () => {

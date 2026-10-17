@@ -1894,3 +1894,21 @@ body {
   background: rgba(255, 149, 0, 0.55);
   box-shadow: 0 0 0 2px rgba(255, 149, 0, 0.9);
 }
+
+.view-mode-btn {
+  min-width: 4.5em;
+}
+
+.view-mode-btn[aria-pressed="true"] {
+  background: var(--accent, #2a6df4);
+  color: #fff;
+}
+
+.viewer.slides {
+  overflow: hidden;
+}
+
+/* Scroll room below the last page, so it top-aligns like the others. */
+.viewer.slides .pages-viewport {
+  padding-bottom: 100vh;
+}

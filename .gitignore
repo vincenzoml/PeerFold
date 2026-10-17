@@ -20,3 +20,5 @@ docs/sample-papers/
 .release-upload/
 .venv-peerfold/
 .peerfold-local
+# local uv environment lock (project is pip-installed)
+uv.lock
